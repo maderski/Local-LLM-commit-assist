@@ -31,3 +31,4 @@ replay_pid*
 local.properties
 gradle/gradle-daemon-jvm.properties
 /build
+/composeApp/build
