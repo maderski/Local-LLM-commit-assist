@@ -30,3 +30,4 @@ replay_pid*
 /.idea
 local.properties
 gradle/gradle-daemon-jvm.properties
+/build
