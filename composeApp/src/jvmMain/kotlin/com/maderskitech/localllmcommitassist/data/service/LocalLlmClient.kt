@@ -1,5 +1,8 @@
-package com.maderskitech.localllmcommitassist
+package com.maderskitech.localllmcommitassist.data.service
 
+import com.maderskitech.localllmcommitassist.model.AppSettings
+import com.maderskitech.localllmcommitassist.model.GeneratedCommit
+import com.maderskitech.localllmcommitassist.model.Project
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.URI
@@ -48,7 +51,8 @@ object LocalLlmClient {
             append("Generate commit message output in this exact format:\\n")
             append("Summary: <single line summary <= 72 chars>\\n")
             append("Description:\\n")
-            append("<bullet list describing key changes and rationale>\\n")
+            append("<bullet list describing high-level changes and rationale>\\n")
+            append("Prefer architecture-focused bullets when applicable (for example: MVVM layers, package reorganization, separation of concerns).\\n")
             append("Do NOT include raw diff lines, file hunks, or code blocks in the description.\\n\\n")
             append("Staged git diff:\\n")
             append(compatibleDiff)
@@ -124,7 +128,7 @@ object LocalLlmClient {
             .takeWhile { line ->
                 !looksLikeDiffStart(line) && !isStagedDiffHeader(line)
             }
-            .filterNot { line -> looksLikeDiffLine(line) }
+            .filterNot { line -> looksLikeDiffLine(line) || looksLikePromptArtifact(line) }
             .joinToString("\n")
             .trim()
 
@@ -153,6 +157,16 @@ object LocalLlmClient {
             trimmed.startsWith("--- ") ||
             trimmed.startsWith("+++ ") ||
             Regex("^[+-][^\\-+].*").matches(trimmed)
+    }
+
+    private fun looksLikePromptArtifact(line: String): Boolean {
+        val trimmed = line.trim()
+        if (trimmed.isBlank()) return false
+        return trimmed.contains("Do NOT include raw diff lines", ignoreCase = true) ||
+            trimmed.contains("Generate commit message output", ignoreCase = true) ||
+            trimmed.contains("Summary: <single line summary", ignoreCase = true) ||
+            trimmed.contains("Description:", ignoreCase = true) ||
+            trimmed.startsWith("```")
     }
 
     private fun extractFirstChoiceContent(responseBody: String): String? {

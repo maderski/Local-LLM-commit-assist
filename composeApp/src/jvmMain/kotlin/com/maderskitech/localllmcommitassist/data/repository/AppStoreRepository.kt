@@ -1,8 +1,10 @@
-package com.maderskitech.localllmcommitassist
+package com.maderskitech.localllmcommitassist.data.repository
 
+import com.maderskitech.localllmcommitassist.model.AppSettings
+import com.maderskitech.localllmcommitassist.model.Project
 import java.util.prefs.Preferences
 
-object AppStore {
+object AppStoreRepository {
     private val prefs = Preferences.userRoot().node("com.maderskitech.localllmcommitassist")
 
     fun loadSettings(): AppSettings {

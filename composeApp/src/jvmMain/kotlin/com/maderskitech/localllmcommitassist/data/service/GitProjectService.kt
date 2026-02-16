@@ -1,4 +1,4 @@
-package com.maderskitech.localllmcommitassist
+package com.maderskitech.localllmcommitassist.data.service
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
