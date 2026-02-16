@@ -1,5 +1,6 @@
 package com.maderskitech.localllmcommitassist.ui.screen
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,6 +27,11 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -47,6 +53,13 @@ fun MainScreen(
     onSummaryChange: (String) -> Unit,
     onDescriptionChange: (String) -> Unit,
 ) {
+    var isContextExpanded by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(uiState.additionalContextInput) {
+        if (uiState.additionalContextInput.isNotBlank()) {
+            isContextExpanded = true
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -118,22 +131,38 @@ fun MainScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text("Commit Message", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                OutlinedTextField(
-                    value = uiState.additionalContextInput,
-                    onValueChange = onAdditionalContextChange,
-                    label = { Text("Additional Context (Optional)") },
-                    modifier = Modifier.fillMaxWidth().height(160.dp),
-                )
 
-                Button(
-                    onClick = onGenerate,
-                    modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = onGenerate,
+                        modifier = Modifier.weight(1f).defaultMinSize(minHeight = 48.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    ) {
+                        Text("Generate Commit Summary + Description")
+                    }
+
+                    FilledTonalButton(
+                        onClick = { isContextExpanded = isContextExpanded.not() },
+                        modifier = Modifier.defaultMinSize(minHeight = 48.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                        )
+                    ) {
+                        Text(if (isContextExpanded) "Hide Context" else "Add Context")
+                    }
+                }
+
+                AnimatedVisibility(visible = isContextExpanded) {
+                    OutlinedTextField(
+                        value = uiState.additionalContextInput,
+                        onValueChange = onAdditionalContextChange,
+                        label = { Text("Additional Context (Optional)") },
+                        modifier = Modifier.fillMaxWidth().height(160.dp),
                     )
-                ) {
-                    Text("Generate Commit Summary + Description")
                 }
 
                 OutlinedTextField(
