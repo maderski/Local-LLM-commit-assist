@@ -9,6 +9,10 @@ import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
 data class ChatMessage(val role: String, val content: String)
@@ -63,11 +67,12 @@ class LlmService {
         val model = modelName.ifBlank { "local-model" }
 
         val systemPrompt = """
-            You are a commit message generator. Analyze the provided git diff and produce a JSON object with two fields:
-            - "summary": A short imperative commit message under 72 characters (e.g., "Add user authentication endpoint")
-            - "description": A detailed description with bullet points explaining the key changes
+            You are a commit message generator. Analyze the provided git diff and return ONLY a valid JSON object with exactly two string fields. No arrays, no bullet characters, no markdown.
 
-            Respond ONLY with the JSON object, no markdown fences or extra text.
+            Example response:
+            {"summary": "Add user authentication endpoint", "description": "- Added login route handler\n- Created JWT token generation utility\n- Added password hashing middleware"}
+
+            Both "summary" and "description" must be strings. Use \n for newlines in the description. Do not use arrays.
         """.trimIndent()
 
         val userPrompt = "Generate a commit message for this diff:\n\n$diff"
@@ -95,6 +100,31 @@ class LlmService {
             .removeSuffix("```")
             .trim()
 
-        json.decodeFromString<CommitMessage>(jsonContent)
+        parseCommitMessage(jsonContent)
+    }
+
+    private fun parseCommitMessage(content: String): CommitMessage {
+        try {
+            val parsed = json.parseToJsonElement(content).jsonObject
+            val summary = parsed["summary"]?.jsonPrimitive?.content.orEmpty()
+            val descriptionElement = parsed["description"]
+            val description = when (descriptionElement) {
+                is JsonArray -> descriptionElement.joinToString("\n") { "- ${(it as JsonPrimitive).content}" }
+                is JsonPrimitive -> descriptionElement.content
+                else -> ""
+            }
+            return CommitMessage(summary, description)
+        } catch (_: Exception) {
+            // Fallback: extract summary from first line, rest as description
+            val lines = content.lines().map { it.trim() }.filter { it.isNotBlank() }
+            val summary = lines.firstOrNull()
+                ?.removePrefix("\"summary\":")
+                ?.trim()
+                ?.removeSurrounding("\"")
+                ?.removeSuffix(",")
+                ?: content.take(72)
+            val description = lines.drop(1).joinToString("\n")
+            return CommitMessage(summary, description)
+        }
     }
 }
