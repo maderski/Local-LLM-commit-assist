@@ -121,12 +121,18 @@ object LocalLlmClient {
     private fun sanitizeDescription(description: String): String {
         val filtered = description
             .lineSequence()
-            .takeWhile { line -> !looksLikeDiffStart(line) }
+            .takeWhile { line ->
+                !looksLikeDiffStart(line) && !isStagedDiffHeader(line)
+            }
             .filterNot { line -> looksLikeDiffLine(line) }
             .joinToString("\n")
             .trim()
 
         return filtered.ifBlank { "- Update implementation details." }
+    }
+
+    private fun isStagedDiffHeader(line: String): Boolean {
+        return line.trimStart().startsWith("Staged git diff:", ignoreCase = true)
     }
 
     private fun looksLikeDiffStart(line: String): Boolean {

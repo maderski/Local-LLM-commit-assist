@@ -166,11 +166,18 @@ fun App() {
                                     description = generatedDescription
                                 )
                                 result.onSuccess { output ->
+                                    generatedSummary = ""
+                                    generatedDescription = ""
                                     generationStatus = "Commit created. ${output.lineSequence().firstOrNull().orEmpty()}"
                                 }.onFailure {
                                     generationStatus = "Commit failed: ${it.message}"
                                 }
                             }
+                        },
+                        onClearCommitText = {
+                            generatedSummary = ""
+                            generatedDescription = ""
+                            generationStatus = "Cleared commit summary and description."
                         },
                         onSummaryChange = { generatedSummary = it },
                         onDescriptionChange = { generatedDescription = it }

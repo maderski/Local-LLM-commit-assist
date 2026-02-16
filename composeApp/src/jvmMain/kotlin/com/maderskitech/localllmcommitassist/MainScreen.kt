@@ -41,6 +41,7 @@ fun MainScreen(
     onGenerate: () -> Unit,
     onCopyToClipboard: () -> Unit,
     onCommitChanges: () -> Unit,
+    onClearCommitText: () -> Unit,
     onSummaryChange: (String) -> Unit,
     onDescriptionChange: (String) -> Unit
 ) {
@@ -115,6 +116,9 @@ fun MainScreen(
             }
             Button(onClick = onCommitChanges) {
                 Text("Commit Changes")
+            }
+            Button(onClick = onClearCommitText) {
+                Text("Clear")
             }
         }
 
