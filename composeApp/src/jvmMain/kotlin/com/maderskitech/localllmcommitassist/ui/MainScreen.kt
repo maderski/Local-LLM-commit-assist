@@ -25,6 +25,7 @@ fun MainScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     var dropdownExpanded by remember { mutableStateOf(false) }
+    var pushAfterCommit by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier.fillMaxSize().padding(20.dp),
@@ -249,9 +250,13 @@ fun MainScreen(
                 )
 
                 // Action buttons
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clip(RoundedCornerShape(0.dp)),
+                ) {
                     Button(
-                        onClick = { viewModel.commit() },
+                        onClick = { viewModel.commit(andPush = pushAfterCommit) },
                         enabled = !state.isLoading && state.commitSummary.isNotBlank(),
                         shape = RoundedCornerShape(8.dp),
                         colors = ButtonDefaults.buttonColors(
@@ -259,7 +264,25 @@ fun MainScreen(
                             contentColor = MaterialTheme.colorScheme.onTertiary,
                         ),
                     ) {
-                        Text("Commit")
+                        Text(if (pushAfterCommit) "Commit & Push" else "Commit")
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(start = 4.dp),
+                    ) {
+                        Checkbox(
+                            checked = pushAfterCommit,
+                            onCheckedChange = { pushAfterCommit = it },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = MaterialTheme.colorScheme.tertiary,
+                                uncheckedColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            ),
+                        )
+                        Text(
+                            "Push",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     FilledTonalButton(
                         onClick = {

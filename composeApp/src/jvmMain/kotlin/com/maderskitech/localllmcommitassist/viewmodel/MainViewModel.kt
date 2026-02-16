@@ -194,7 +194,7 @@ class MainViewModel(
         return diff
     }
 
-    fun commit() {
+    fun commit(andPush: Boolean = false) {
         val state = _uiState.value
         if (state.commitSummary.isBlank()) {
             _uiState.value = state.copy(statusMessage = "Commit summary is empty", isError = true)
@@ -204,16 +204,43 @@ class MainViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.value = _uiState.value.copy(isLoading = true, statusMessage = "", isError = false)
             gitService.commit(state.repoPath.trim(), state.commitSummary, state.commitDescription)
-                .onSuccess { output ->
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        fileSummary = "",
-            fullDiff = "",
-                        commitSummary = "",
-                        commitDescription = "",
-                        statusMessage = "Committed successfully!\n$output",
-                        isError = false,
-                    )
+                .onSuccess { commitOutput ->
+                    if (andPush) {
+                        _uiState.value = _uiState.value.copy(statusMessage = "Pushing...", isError = false)
+                        gitService.push(state.repoPath.trim())
+                            .onSuccess { pushOutput ->
+                                _uiState.value = _uiState.value.copy(
+                                    isLoading = false,
+                                    fileSummary = "",
+                                    fullDiff = "",
+                                    commitSummary = "",
+                                    commitDescription = "",
+                                    statusMessage = "Committed and pushed successfully!\n$commitOutput\n$pushOutput",
+                                    isError = false,
+                                )
+                            }
+                            .onFailure { e ->
+                                _uiState.value = _uiState.value.copy(
+                                    isLoading = false,
+                                    fileSummary = "",
+                                    fullDiff = "",
+                                    commitSummary = "",
+                                    commitDescription = "",
+                                    statusMessage = "Committed but push failed: ${e.message}",
+                                    isError = true,
+                                )
+                            }
+                    } else {
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            fileSummary = "",
+                            fullDiff = "",
+                            commitSummary = "",
+                            commitDescription = "",
+                            statusMessage = "Committed successfully!\n$commitOutput",
+                            isError = false,
+                        )
+                    }
                 }
                 .onFailure { e ->
                     _uiState.value = _uiState.value.copy(

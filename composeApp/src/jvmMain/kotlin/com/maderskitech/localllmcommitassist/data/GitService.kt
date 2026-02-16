@@ -98,4 +98,19 @@ class GitService {
         }
         output
     }
+
+    fun push(repoPath: String): Result<String> = runCatching {
+        val process = ProcessBuilder("git", "push")
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git push failed (exit $exitCode): $output")
+        }
+        output
+    }
 }
