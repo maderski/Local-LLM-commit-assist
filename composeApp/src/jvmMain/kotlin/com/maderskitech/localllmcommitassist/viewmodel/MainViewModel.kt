@@ -13,7 +13,8 @@ import kotlinx.coroutines.launch
 data class MainUiState(
     val savedProjects: List<String> = emptyList(),
     val repoPath: String = "",
-    val diffText: String = "",
+    val fileSummary: String = "",
+    val fullDiff: String = "",
     val commitSummary: String = "",
     val commitDescription: String = "",
     val isLoading: Boolean = false,
@@ -39,7 +40,8 @@ class MainViewModel(
         settingsRepository.setSelectedProject(path)
         _uiState.value = _uiState.value.copy(
             repoPath = path,
-            diffText = "",
+            fileSummary = "",
+            fullDiff = "",
             commitSummary = "",
             commitDescription = "",
             statusMessage = "",
@@ -57,7 +59,8 @@ class MainViewModel(
         _uiState.value = _uiState.value.copy(
             savedProjects = settingsRepository.getSavedProjects(),
             repoPath = path,
-            diffText = "",
+            fileSummary = "",
+            fullDiff = "",
             commitSummary = "",
             commitDescription = "",
             statusMessage = "",
@@ -73,7 +76,8 @@ class MainViewModel(
         _uiState.value = _uiState.value.copy(
             savedProjects = projects,
             repoPath = newSelected,
-            diffText = "",
+            fileSummary = "",
+            fullDiff = "",
             commitSummary = "",
             commitDescription = "",
             statusMessage = "",
@@ -105,7 +109,20 @@ class MainViewModel(
             val diff = loadDiff(path)
             if (diff == null) return@launch
 
-            _uiState.value = _uiState.value.copy(diffText = diff, statusMessage = "Generating commit message...", isError = false)
+            val summary = gitService.getNewFiles(path).getOrDefault(emptyList())
+            val statSummary = gitService.getStagedStatSummary(path).getOrDefault("")
+            val displayText = if (summary.isNotEmpty()) {
+                summary.joinToString("\n") + "\n\n" + statSummary.lines().lastOrNull { it.isNotBlank() }.orEmpty()
+            } else {
+                statSummary
+            }
+
+            _uiState.value = _uiState.value.copy(
+                fileSummary = displayText.trim(),
+                fullDiff = diff,
+                statusMessage = "Generating commit message...",
+                isError = false,
+            )
 
             llmService.generateCommitMessage(address, model, diff)
                 .onSuccess { commitMessage ->
@@ -164,7 +181,8 @@ class MainViewModel(
             diff = retryResult.getOrThrow()
             if (diff.isBlank()) {
                 _uiState.value = _uiState.value.copy(
-                    diffText = "",
+                    fileSummary = "",
+            fullDiff = "",
                     isLoading = false,
                     statusMessage = "No changes found in the repository.",
                     isError = true,
@@ -189,7 +207,8 @@ class MainViewModel(
                 .onSuccess { output ->
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        diffText = "",
+                        fileSummary = "",
+            fullDiff = "",
                         commitSummary = "",
                         commitDescription = "",
                         statusMessage = "Committed successfully!\n$output",

@@ -153,7 +153,7 @@ fun MainScreen(
             }
         }
 
-        // Diff area
+        // Staged changes summary
         Card(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             shape = RoundedCornerShape(12.dp),
@@ -164,15 +164,15 @@ fun MainScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    "Staged Diff",
+                    "Staged Changes",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
                 OutlinedTextField(
-                    value = state.diffText,
+                    value = state.fileSummary,
                     onValueChange = {},
                     readOnly = true,
-                    placeholder = { Text("Diff output will appear here...") },
+                    placeholder = { Text("Changed files will appear here...") },
                     textStyle = LocalTextStyle.current.copy(
                         fontFamily = FontFamily.Monospace,
                         fontSize = 13.sp,
