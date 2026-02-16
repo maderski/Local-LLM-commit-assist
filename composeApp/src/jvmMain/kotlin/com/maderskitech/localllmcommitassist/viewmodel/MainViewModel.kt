@@ -89,73 +89,10 @@ class MainViewModel(
         _uiState.value = _uiState.value.copy(commitDescription = description)
     }
 
-    fun loadDiff() {
+    fun generateCommitMessage() {
         val path = _uiState.value.repoPath.trim()
         if (path.isBlank()) {
             _uiState.value = _uiState.value.copy(statusMessage = "Please select a project first", isError = true)
-            return
-        }
-
-        viewModelScope.launch(Dispatchers.IO) {
-            _uiState.value = _uiState.value.copy(isLoading = true, statusMessage = "", isError = false)
-            gitService.getStagedDiff(path)
-                .onSuccess { diff ->
-                    if (diff.isBlank()) {
-                        // No staged changes — run git add -A and retry once
-                        _uiState.value = _uiState.value.copy(statusMessage = "No staged changes, running git add...", isError = false)
-                        gitService.stageAll(path)
-                            .onSuccess {
-                                gitService.getStagedDiff(path)
-                                    .onSuccess { retryDiff ->
-                                        if (retryDiff.isBlank()) {
-                                            _uiState.value = _uiState.value.copy(
-                                                diffText = "",
-                                                isLoading = false,
-                                                statusMessage = "No changes found in the repository.",
-                                                isError = true,
-                                            )
-                                        } else {
-                                            _uiState.value = _uiState.value.copy(
-                                                diffText = retryDiff,
-                                                isLoading = false,
-                                                statusMessage = "Staged all changes via git add",
-                                                isError = false,
-                                            )
-                                        }
-                                    }
-                                    .onFailure { e ->
-                                        _uiState.value = _uiState.value.copy(
-                                            isLoading = false,
-                                            statusMessage = "Failed to load diff after staging: ${e.message}",
-                                            isError = true,
-                                        )
-                                    }
-                            }
-                            .onFailure { e ->
-                                _uiState.value = _uiState.value.copy(
-                                    isLoading = false,
-                                    statusMessage = "Failed to stage files: ${e.message}",
-                                    isError = true,
-                                )
-                            }
-                    } else {
-                        _uiState.value = _uiState.value.copy(diffText = diff, isLoading = false)
-                    }
-                }
-                .onFailure { e ->
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        statusMessage = "Failed to load diff: ${e.message}",
-                        isError = true,
-                    )
-                }
-        }
-    }
-
-    fun generateCommitMessage() {
-        val diff = _uiState.value.diffText
-        if (diff.isBlank()) {
-            _uiState.value = _uiState.value.copy(statusMessage = "Load a diff first", isError = true)
             return
         }
 
@@ -163,7 +100,13 @@ class MainViewModel(
         val model = settingsRepository.getModelName()
 
         viewModelScope.launch(Dispatchers.IO) {
-            _uiState.value = _uiState.value.copy(isLoading = true, statusMessage = "Generating commit message...", isError = false)
+            _uiState.value = _uiState.value.copy(isLoading = true, statusMessage = "Loading diff...", isError = false)
+
+            val diff = loadDiff(path)
+            if (diff == null) return@launch
+
+            _uiState.value = _uiState.value.copy(diffText = diff, statusMessage = "Generating commit message...", isError = false)
+
             llmService.generateCommitMessage(address, model, diff)
                 .onSuccess { commitMessage ->
                     _uiState.value = _uiState.value.copy(
@@ -182,6 +125,55 @@ class MainViewModel(
                     )
                 }
         }
+    }
+
+    private fun loadDiff(path: String): String? {
+        val diffResult = gitService.getStagedDiff(path)
+        diffResult.onFailure { e ->
+            _uiState.value = _uiState.value.copy(
+                isLoading = false,
+                statusMessage = "Failed to load diff: ${e.message}",
+                isError = true,
+            )
+            return null
+        }
+
+        var diff = diffResult.getOrThrow()
+
+        if (diff.isBlank()) {
+            _uiState.value = _uiState.value.copy(statusMessage = "No staged changes, running git add...", isError = false)
+            gitService.stageAll(path).onFailure { e ->
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    statusMessage = "Failed to stage files: ${e.message}",
+                    isError = true,
+                )
+                return null
+            }
+
+            val retryResult = gitService.getStagedDiff(path)
+            retryResult.onFailure { e ->
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    statusMessage = "Failed to load diff after staging: ${e.message}",
+                    isError = true,
+                )
+                return null
+            }
+
+            diff = retryResult.getOrThrow()
+            if (diff.isBlank()) {
+                _uiState.value = _uiState.value.copy(
+                    diffText = "",
+                    isLoading = false,
+                    statusMessage = "No changes found in the repository.",
+                    isError = true,
+                )
+                return null
+            }
+        }
+
+        return diff
     }
 
     fun commit() {

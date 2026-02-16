@@ -148,13 +148,7 @@ fun MainScreen(
                         }
                     }
 
-                    Button(
-                        onClick = { viewModel.loadDiff() },
-                        enabled = !state.isLoading && state.repoPath.isNotBlank(),
-                        shape = RoundedCornerShape(8.dp),
-                    ) {
-                        Text("Load Diff")
-                    }
+
                 }
             }
         }
@@ -199,7 +193,7 @@ fun MainScreen(
         // Generate button — primary CTA
         Button(
             onClick = { viewModel.generateCommitMessage() },
-            enabled = !state.isLoading && state.diffText.isNotBlank(),
+            enabled = !state.isLoading && state.repoPath.isNotBlank(),
             modifier = Modifier.fillMaxWidth().height(48.dp),
             shape = RoundedCornerShape(10.dp),
             colors = ButtonDefaults.buttonColors(

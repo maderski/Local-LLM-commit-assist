@@ -66,14 +66,13 @@ class LlmService {
     ): Result<CommitMessage> = runCatching {
         val model = modelName.ifBlank { "local-model" }
 
-        val systemPrompt = """
-            You are a commit message generator. Analyze the provided git diff and return ONLY a valid JSON object with exactly two string fields. No arrays, no bullet characters, no markdown.
-
-            Example response:
-            {"summary": "Add user authentication endpoint", "description": "- Added login route handler\n- Created JWT token generation utility\n- Added password hashing middleware"}
-
-            Both "summary" and "description" must be strings. Use \n for newlines in the description. Do not use arrays.
-        """.trimIndent()
+        val systemPrompt = buildString {
+            append("You are a commit message generator. Analyze the provided git diff and write a commit message.\n\n")
+            append("Reply with EXACTLY two lines and nothing else:\n")
+            append("Line 1: A short imperative commit summary under 72 characters\n")
+            append("Line 2: A detailed description with bullet points (use - for bullets) explaining the key changes\n\n")
+            append("Do NOT wrap your response in JSON, code fences, or quotes. Just plain text, two lines.")
+        }
 
         val userPrompt = "Generate a commit message for this diff:\n\n$diff"
 
@@ -94,37 +93,39 @@ class LlmService {
         val chatResponse = json.decodeFromString<ChatResponse>(body)
         val content = chatResponse.choices.first().message.content.trim()
 
+        parseResponse(content)
+    }
+
+    private fun parseResponse(content: String): CommitMessage {
         // Strip markdown code fences if present
-        val jsonContent = content
+        val cleaned = content
             .removePrefix("```json").removePrefix("```")
             .removeSuffix("```")
             .trim()
 
-        parseCommitMessage(jsonContent)
-    }
-
-    private fun parseCommitMessage(content: String): CommitMessage {
-        try {
-            val parsed = json.parseToJsonElement(content).jsonObject
-            val summary = parsed["summary"]?.jsonPrimitive?.content.orEmpty()
-            val descriptionElement = parsed["description"]
-            val description = when (descriptionElement) {
-                is JsonArray -> descriptionElement.joinToString("\n") { "- ${(it as JsonPrimitive).content}" }
-                is JsonPrimitive -> descriptionElement.content
-                else -> ""
+        // Try JSON parsing first
+        if (cleaned.startsWith("{")) {
+            try {
+                val parsed = json.parseToJsonElement(cleaned).jsonObject
+                val summary = parsed["summary"]?.jsonPrimitive?.content.orEmpty()
+                val descriptionElement = parsed["description"]
+                val description = when (descriptionElement) {
+                    is JsonArray -> descriptionElement.joinToString("\n") { "- ${(it as JsonPrimitive).content}" }
+                    is JsonPrimitive -> descriptionElement.content
+                    else -> ""
+                }
+                return CommitMessage(summary, description)
+            } catch (_: Exception) {
+                // Fall through to plain text parsing
             }
-            return CommitMessage(summary, description)
-        } catch (_: Exception) {
-            // Fallback: extract summary from first line, rest as description
-            val lines = content.lines().map { it.trim() }.filter { it.isNotBlank() }
-            val summary = lines.firstOrNull()
-                ?.removePrefix("\"summary\":")
-                ?.trim()
-                ?.removeSurrounding("\"")
-                ?.removeSuffix(",")
-                ?: content.take(72)
-            val description = lines.drop(1).joinToString("\n")
-            return CommitMessage(summary, description)
         }
+
+        // Plain text: first line is summary, rest is description
+        val lines = cleaned.lines().map { it.trim() }.filter { it.isNotBlank() }
+        val summary = lines.firstOrNull()
+            ?.removeSurrounding("\"")
+            ?: cleaned.take(72)
+        val description = lines.drop(1).joinToString("\n")
+        return CommitMessage(summary, description)
     }
 }
