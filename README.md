@@ -1,27 +1,70 @@
-This is a Kotlin Multiplatform project targeting Desktop (JVM).
+# Local LLM Commit Assist
 
-* [/composeApp](./composeApp/src) is for code that will be shared across your Compose Multiplatform applications.
-  It contains several subfolders:
-  - [commonMain](./composeApp/src/commonMain/kotlin) is for code that’s common for all targets.
-  - Other folders are for Kotlin code that will be compiled for only the platform indicated in the folder name.
-    For example, if you want to use Apple’s CoreCrypto for the iOS part of your Kotlin app,
-    the [iosMain](./composeApp/src/iosMain/kotlin) folder would be the right place for such calls.
-    Similarly, if you want to edit the Desktop (JVM) specific part, the [jvmMain](./composeApp/src/jvmMain/kotlin)
-    folder is the appropriate location.
+A desktop app that connects to a local LLM (via its OpenAI-compatible API) to automatically generate git commit messages from your staged changes.
 
-### Build and Run Desktop (JVM) Application
+## Features
 
-To build and run the development version of the desktop app, use the run configuration from the run widget
-in your IDE’s toolbar or run it directly from the terminal:
-- on macOS/Linux
-  ```shell
-  ./gradlew :composeApp:run
-  ```
-- on Windows
-  ```shell
-  .\gradlew.bat :composeApp:run
-  ```
+- **Project management** — Add multiple git repositories and switch between them from a dropdown
+- **Automatic staging** — Automatically runs `git add` if no files are staged
+- **AI-generated commit messages** — Sends your diff to a local LLM and gets back a summary and description
+- **Commit & Push** — Commit directly from the app, with an optional push checkbox
+- **Copy to clipboard** — Copy the generated message for use elsewhere
+- **Configurable LLM settings** — Set the server address and model name, with a test connection button
+- **Dark theme** — Modern dark UI with clear visual hierarchy
 
----
+## Requirements
 
-Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-multiplatform-dev/get-started.html)…
+- **Java 17+** — Required to run and build the app
+- **A local LLM server** with an OpenAI-compatible API (e.g., [LM Studio](https://lmstudio.ai/), [Ollama](https://ollama.com/), [LocalAI](https://localai.io/))
+- **Git** — Installed and available on your PATH
+
+## Getting Started
+
+1. Start your local LLM server
+2. Run the app:
+   ```shell
+   ./gradlew :composeApp:run
+   ```
+3. Go to **Settings** and enter your LLM server address (e.g., `http://localhost:1234/v1`)
+4. Click **Test Connection** to verify
+5. Back on the main screen, click **Add Project** and select a git repository
+6. Make some changes in your repo
+7. Click **Generate Commit Message** — the app will stage files, load the diff, and generate a message
+8. Edit the summary/description if needed
+9. Click **Commit** (or check **Push** first to commit and push in one step)
+
+## Build macOS App
+
+To build a distributable `.dmg`:
+
+```shell
+./gradlew :composeApp:packageDmg
+```
+
+The output will be in `composeApp/build/compose/binaries/main/dmg/`.
+
+## Project Structure
+
+```
+composeApp/src/jvmMain/kotlin/com/maderskitech/localllmcommitassist/
+  main.kt                  — App entry point and window configuration
+  App.kt                   — Navigation between screens
+  AppIcon.kt               — Programmatic window icon
+  data/
+    SettingsRepository.kt  — Persisted settings (Java Preferences API)
+    GitService.kt          — Git operations via ProcessBuilder
+    LlmService.kt          — OpenAI-compatible API client (Ktor)
+  viewmodel/
+    MainViewModel.kt       — Main screen state and business logic
+  ui/
+    Theme.kt               — Dark color scheme and typography
+    MainScreen.kt          — Main screen UI
+    SettingsScreen.kt      — Settings screen UI
+```
+
+## Tech Stack
+
+- Kotlin Multiplatform + Compose for Desktop
+- Ktor Client (CIO) for HTTP
+- kotlinx.serialization for JSON
+- Material 3 design components
