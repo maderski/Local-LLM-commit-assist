@@ -2,6 +2,9 @@
 
 A desktop app that connects to a local LLM (via its OpenAI-compatible API) to automatically generate git commit messages from your staged changes.
 
+<img width="897" height="894" alt="image" src="https://github.com/user-attachments/assets/05f3385f-b6a8-4d8e-a62c-a59911c34921" />
+
+
 ## Features
 
 - **Project management** — Add multiple git repositories and switch between them from a dropdown
