@@ -5,11 +5,20 @@ plugins {
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.composeHotReload)
+    alias(libs.plugins.kotlinSerialization)
 }
 
 kotlin {
-    jvm()
-    
+    jvm {
+        compilations.all {
+            compileTaskProvider.configure {
+                compilerOptions {
+                    jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+                }
+            }
+        }
+    }
+
     sourceSets {
         commonMain.dependencies {
             implementation(libs.compose.runtime)
@@ -20,6 +29,10 @@ kotlin {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
+            implementation(libs.kotlinx.serialization.json)
+            implementation(libs.ktor.client.core)
+            implementation(libs.ktor.client.content.negotiation)
+            implementation(libs.ktor.serialization.kotlinx.json)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
@@ -27,6 +40,7 @@ kotlin {
         jvmMain.dependencies {
             implementation(compose.desktop.currentOs)
             implementation(libs.kotlinx.coroutinesSwing)
+            implementation(libs.ktor.client.cio)
         }
     }
 }
@@ -37,9 +51,21 @@ compose.desktop {
         mainClass = "com.maderskitech.localllmcommitassist.MainKt"
 
         nativeDistributions {
-            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-            packageName = "com.maderskitech.localllmcommitassist"
+            targetFormats(TargetFormat.Dmg)
+            packageName = "Local LLM Commit Assist"
             packageVersion = "1.0.0"
+            javaHome = "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
+            macOS {
+                bundleID = "com.maderskitech.localllmcommitassist"
+                appCategory = "public.app-category.developer-tools"
+                iconFile.set(project.file("src/jvmMain/resources/app-icon.icns"))
+                infoPlist {
+                    extraKeysRawXml = """
+                        <key>NSHighResolutionCapable</key>
+                        <true/>
+                    """.trimIndent()
+                }
+            }
         }
     }
 }
