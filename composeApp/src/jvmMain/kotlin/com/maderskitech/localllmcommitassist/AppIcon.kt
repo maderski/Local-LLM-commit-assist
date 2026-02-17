@@ -23,20 +23,15 @@ fun createAppIcon(): BitmapPainter {
 
     val slate900 = Color(0x0F, 0x17, 0x2A)
     val slate800 = Color(0x1E, 0x29, 0x3B)
-    val slate700 = Color(0x33, 0x41, 0x55)
     val blue400 = Color(0x60, 0xA5, 0xFA)
     val blue500 = Color(0x3B, 0x82, 0xF6)
     val green400 = Color(0x4A, 0xDE, 0x80)
     val green500 = Color(0x22, 0xC5, 0x5E)
     val dark = Color(0x0F, 0x17, 0x2A)
 
-    // Background rounded square
-    val bgShape = RoundRectangle2D.Float(16f, 16f, 480f, 480f, 96f, 96f)
-    g.paint = GradientPaint(16f, 16f, slate800, 496f, 496f, slate900)
-    g.fill(bgShape)
-    g.color = slate700
-    g.stroke = BasicStroke(4f)
-    g.draw(bgShape)
+    // Background - fill entire canvas; macOS applies its own rounded mask
+    g.paint = GradientPaint(0f, 0f, slate800, 512f, 512f, slate900)
+    g.fillRect(0, 0, size, size)
 
     // Git branch main line
     g.paint = GradientPaint(180f, 140f, blue400, 180f, 380f, blue500)
