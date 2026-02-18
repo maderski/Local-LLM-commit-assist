@@ -13,6 +13,7 @@ import kotlinx.coroutines.launch
 data class MainUiState(
     val savedProjects: List<String> = emptyList(),
     val repoPath: String = "",
+    val currentBranch: String = "",
     val fileSummary: String = "",
     val fullDiff: String = "",
     val commitSummary: String = "",
@@ -36,10 +37,15 @@ class MainViewModel(
     )
     val uiState: StateFlow<MainUiState> = _uiState
 
+    init {
+        loadCurrentBranch(_uiState.value.repoPath)
+    }
+
     fun selectProject(path: String) {
         settingsRepository.setSelectedProject(path)
         _uiState.value = _uiState.value.copy(
             repoPath = path,
+            currentBranch = "",
             fileSummary = "",
             fullDiff = "",
             commitSummary = "",
@@ -47,6 +53,15 @@ class MainViewModel(
             statusMessage = "",
             isError = false,
         )
+        loadCurrentBranch(path)
+    }
+
+    private fun loadCurrentBranch(path: String) {
+        if (path.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val branch = gitService.getCurrentBranch(path).getOrDefault("")
+            _uiState.value = _uiState.value.copy(currentBranch = branch)
+        }
     }
 
     fun addProject(path: String) {
@@ -59,6 +74,7 @@ class MainViewModel(
         _uiState.value = _uiState.value.copy(
             savedProjects = settingsRepository.getSavedProjects(),
             repoPath = path,
+            currentBranch = "",
             fileSummary = "",
             fullDiff = "",
             commitSummary = "",
@@ -66,6 +82,7 @@ class MainViewModel(
             statusMessage = "",
             isError = false,
         )
+        loadCurrentBranch(path)
     }
 
     fun removeProject(path: String) {
@@ -76,6 +93,7 @@ class MainViewModel(
         _uiState.value = _uiState.value.copy(
             savedProjects = projects,
             repoPath = newSelected,
+            currentBranch = "",
             fileSummary = "",
             fullDiff = "",
             commitSummary = "",
@@ -83,6 +101,7 @@ class MainViewModel(
             statusMessage = "",
             isError = false,
         )
+        loadCurrentBranch(newSelected)
     }
 
     fun updateCommitSummary(summary: String) {

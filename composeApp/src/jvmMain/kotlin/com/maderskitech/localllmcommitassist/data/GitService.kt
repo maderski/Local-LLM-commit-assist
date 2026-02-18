@@ -68,6 +68,21 @@ class GitService {
             }
     }
 
+    fun getCurrentBranch(repoPath: String): Result<String> = runCatching {
+        val process = ProcessBuilder("git", "branch", "--show-current")
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText().trim()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git branch --show-current failed (exit $exitCode): $output")
+        }
+        output
+    }
+
     fun stageAll(repoPath: String): Result<Unit> = runCatching {
         val process = ProcessBuilder("git", "add", "-A")
             .directory(File(repoPath))
