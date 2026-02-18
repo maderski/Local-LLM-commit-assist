@@ -53,7 +53,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg)
             packageName = "Local LLM Commit Assist"
-            packageVersion = "1.0.0"
+            packageVersion = "1.0.1"
             javaHome = "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
             macOS {
                 bundleID = "com.maderskitech.localllmcommitassist"
