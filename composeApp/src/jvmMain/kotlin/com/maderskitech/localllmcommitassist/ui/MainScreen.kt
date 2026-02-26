@@ -31,6 +31,7 @@ fun MainScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     var dropdownExpanded by remember { mutableStateOf(false) }
+    var branchDropdownExpanded by remember { mutableStateOf(false) }
     var pushAfterCommit by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableStateOf(0) }
     val scrollState = rememberScrollState()
@@ -372,6 +373,50 @@ fun MainScreen(
                                 style = MaterialTheme.typography.titleMedium,
                                 color = MaterialTheme.colorScheme.primary,
                             )
+
+                            ExposedDropdownMenuBox(
+                                expanded = branchDropdownExpanded,
+                                onExpandedChange = { branchDropdownExpanded = it },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                OutlinedTextField(
+                                    value = state.prTargetBranch.ifBlank { "main" },
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    label = { Text("Merge Into") },
+                                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = branchDropdownExpanded) },
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                                        .fillMaxWidth(),
+                                )
+                                ExposedDropdownMenu(
+                                    expanded = branchDropdownExpanded,
+                                    onDismissRequest = { branchDropdownExpanded = false },
+                                ) {
+                                    if (state.availableBranches.isEmpty()) {
+                                        DropdownMenuItem(
+                                            text = { Text("No branches found", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                            onClick = { branchDropdownExpanded = false },
+                                            enabled = false,
+                                        )
+                                    }
+                                    state.availableBranches.forEach { branch ->
+                                        DropdownMenuItem(
+                                            text = { Text(branch) },
+                                            onClick = {
+                                                viewModel.updatePrTargetBranch(branch)
+                                                branchDropdownExpanded = false
+                                            },
+                                        )
+                                    }
+                                }
+                            }
 
                             Button(
                                 onClick = { viewModel.generatePrDescription() },

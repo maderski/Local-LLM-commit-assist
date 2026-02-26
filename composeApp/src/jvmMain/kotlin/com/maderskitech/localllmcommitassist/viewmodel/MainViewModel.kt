@@ -15,6 +15,8 @@ data class MainUiState(
     val savedProjects: List<String> = emptyList(),
     val repoPath: String = "",
     val currentBranch: String = "",
+    val availableBranches: List<String> = emptyList(),
+    val prTargetBranch: String = "",
     val fileSummary: String = "",
     val fullDiff: String = "",
     val commitSummary: String = "",
@@ -38,12 +40,14 @@ class MainViewModel(
         MainUiState(
             savedProjects = settingsRepository.getSavedProjects(),
             repoPath = settingsRepository.getSelectedProject(),
+            prTargetBranch = settingsRepository.getPrTargetBranch(),
         )
     )
     val uiState: StateFlow<MainUiState> = _uiState
 
     init {
         loadCurrentBranch(_uiState.value.repoPath)
+        loadBranches(_uiState.value.repoPath)
     }
 
     fun selectProject(path: String) {
@@ -51,6 +55,7 @@ class MainViewModel(
         _uiState.value = _uiState.value.copy(
             repoPath = path,
             currentBranch = "",
+            availableBranches = emptyList(),
             fileSummary = "",
             fullDiff = "",
             commitSummary = "",
@@ -62,6 +67,7 @@ class MainViewModel(
             prUrl = "",
         )
         loadCurrentBranch(path)
+        loadBranches(path)
     }
 
     private fun loadCurrentBranch(path: String) {
@@ -70,6 +76,19 @@ class MainViewModel(
             val branch = gitService.getCurrentBranch(path).getOrDefault("")
             _uiState.value = _uiState.value.copy(currentBranch = branch)
         }
+    }
+
+    private fun loadBranches(path: String) {
+        if (path.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val branches = gitService.getLocalBranches(path).getOrDefault(emptyList())
+            _uiState.value = _uiState.value.copy(availableBranches = branches)
+        }
+    }
+
+    fun updatePrTargetBranch(branch: String) {
+        settingsRepository.setPrTargetBranch(branch)
+        _uiState.value = _uiState.value.copy(prTargetBranch = branch)
     }
 
     fun addProject(path: String) {
@@ -83,6 +102,7 @@ class MainViewModel(
             savedProjects = settingsRepository.getSavedProjects(),
             repoPath = path,
             currentBranch = "",
+            availableBranches = emptyList(),
             fileSummary = "",
             fullDiff = "",
             commitSummary = "",
@@ -94,6 +114,7 @@ class MainViewModel(
             prUrl = "",
         )
         loadCurrentBranch(path)
+        loadBranches(path)
     }
 
     fun removeProject(path: String) {
@@ -105,6 +126,7 @@ class MainViewModel(
             savedProjects = projects,
             repoPath = newSelected,
             currentBranch = "",
+            availableBranches = emptyList(),
             fileSummary = "",
             fullDiff = "",
             commitSummary = "",
@@ -116,6 +138,7 @@ class MainViewModel(
             prUrl = "",
         )
         loadCurrentBranch(newSelected)
+        loadBranches(newSelected)
     }
 
     fun updateCommitSummary(summary: String) {
@@ -194,7 +217,7 @@ class MainViewModel(
 
         val address = settingsRepository.getLlmAddress()
         val model = settingsRepository.getModelName()
-        val targetBranch = settingsRepository.getPrTargetBranch()
+        val targetBranch = _uiState.value.prTargetBranch
 
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.value = _uiState.value.copy(isLoading = true, statusMessage = "Loading commit history...", isError = false)
@@ -255,7 +278,7 @@ class MainViewModel(
         }
 
         val platform = settingsRepository.getPrPlatform()
-        val targetBranch = settingsRepository.getPrTargetBranch()
+        val targetBranch = _uiState.value.prTargetBranch
         val currentBranch = state.currentBranch
 
         viewModelScope.launch(Dispatchers.IO) {

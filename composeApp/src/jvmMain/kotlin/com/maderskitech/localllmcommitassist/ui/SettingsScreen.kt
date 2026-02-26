@@ -32,7 +32,6 @@ fun SettingsScreen(
     var prPlatform by remember { mutableStateOf(settingsRepository.getPrPlatform()) }
     var githubToken by remember { mutableStateOf(settingsRepository.getGitHubToken()) }
     var azureToken by remember { mutableStateOf(settingsRepository.getAzureDevOpsToken()) }
-    var prTargetBranch by remember { mutableStateOf(settingsRepository.getPrTargetBranch()) }
     var prSaved by remember { mutableStateOf(false) }
     var prDropdownExpanded by remember { mutableStateOf(false) }
 
@@ -258,20 +257,6 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
 
-                OutlinedTextField(
-                    value = prTargetBranch,
-                    onValueChange = { prTargetBranch = it; prSaved = false },
-                    label = { Text("Target Branch") },
-                    placeholder = { Text("main") },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                    ),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -281,7 +266,6 @@ fun SettingsScreen(
                             settingsRepository.setPrPlatform(prPlatform)
                             settingsRepository.setGitHubToken(githubToken)
                             settingsRepository.setAzureDevOpsToken(azureToken)
-                            settingsRepository.setPrTargetBranch(prTargetBranch)
                             prSaved = true
                         },
                         shape = RoundedCornerShape(8.dp),

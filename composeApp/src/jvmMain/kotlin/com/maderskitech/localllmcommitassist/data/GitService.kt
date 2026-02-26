@@ -83,6 +83,19 @@ class GitService {
         output
     }
 
+    fun getLocalBranches(repoPath: String): Result<List<String>> = runCatching {
+        val process = ProcessBuilder("git", "branch")
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+        if (exitCode != 0) error("git branch failed (exit $exitCode): $output")
+        output.lines()
+            .map { it.trim().removePrefix("* ").trim() }
+            .filter { it.isNotBlank() }
+    }
+
     fun stageAll(repoPath: String): Result<Unit> = runCatching {
         val process = ProcessBuilder("git", "add", "-A")
             .directory(File(repoPath))
