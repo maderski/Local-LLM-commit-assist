@@ -83,6 +83,19 @@ class GitService {
         output
     }
 
+    fun getLocalBranches(repoPath: String): Result<List<String>> = runCatching {
+        val process = ProcessBuilder("git", "branch")
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+        if (exitCode != 0) error("git branch failed (exit $exitCode): $output")
+        output.lines()
+            .map { it.trim().removePrefix("* ").trim() }
+            .filter { it.isNotBlank() }
+    }
+
     fun stageAll(repoPath: String): Result<Unit> = runCatching {
         val process = ProcessBuilder("git", "add", "-A")
             .directory(File(repoPath))
@@ -110,6 +123,43 @@ class GitService {
 
         if (exitCode != 0) {
             error("git commit failed (exit $exitCode): $output")
+        }
+        output
+    }
+
+    fun getCommitLog(repoPath: String, baseBranch: String): Result<String> = runCatching {
+        val process = ProcessBuilder("git", "log", "--oneline", "$baseBranch..HEAD")
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText().trim()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0 || output.isBlank()) {
+            val fallback = ProcessBuilder("git", "log", "--oneline", "-n", "10")
+                .directory(File(repoPath))
+                .redirectErrorStream(true)
+                .start()
+            val fallbackOutput = fallback.inputStream.bufferedReader().readText().trim()
+            if (fallback.waitFor() != 0) error("git log fallback failed: $fallbackOutput")
+            fallbackOutput
+        } else {
+            output
+        }
+    }
+
+    fun getRemoteUrl(repoPath: String): Result<String> = runCatching {
+        val process = ProcessBuilder("git", "remote", "get-url", "origin")
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText().trim()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git remote get-url origin failed (exit $exitCode): $output")
         }
         output
     }

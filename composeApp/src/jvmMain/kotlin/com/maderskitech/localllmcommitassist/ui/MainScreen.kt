@@ -1,20 +1,26 @@
 package com.maderskitech.localllmcommitassist.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maderskitech.localllmcommitassist.viewmodel.MainViewModel
+import java.awt.Desktop
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.io.File
+import java.net.URI
 import javax.swing.JFileChooser
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -25,10 +31,13 @@ fun MainScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     var dropdownExpanded by remember { mutableStateOf(false) }
+    var branchDropdownExpanded by remember { mutableStateOf(false) }
     var pushAfterCommit by remember { mutableStateOf(false) }
+    var selectedTab by remember { mutableStateOf(0) }
+    val scrollState = rememberScrollState()
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(20.dp),
+        modifier = Modifier.fillMaxSize().verticalScroll(scrollState).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         // Top bar
@@ -172,154 +181,319 @@ fun MainScreen(
             }
         }
 
-        // Staged changes summary
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth().weight(1f),
+        // Tabs
+        TabRow(
+            selectedTabIndex = selectedTab,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.primary,
         ) {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    "Staged Changes",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                OutlinedTextField(
-                    value = state.fileSummary,
-                    onValueChange = {},
-                    readOnly = true,
-                    placeholder = { Text("Changed files will appear here...") },
-                    textStyle = LocalTextStyle.current.copy(
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp,
-                    ),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    ),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+            Tab(
+                selected = selectedTab == 0,
+                onClick = { selectedTab = 0 },
+                text = { Text("Commit") },
+            )
+            Tab(
+                selected = selectedTab == 1,
+                onClick = { selectedTab = 1 },
+                text = { Text("Create PR") },
+            )
         }
 
-        // Generate button — primary CTA
-        Button(
-            onClick = { viewModel.generateCommitMessage() },
-            enabled = !state.isLoading && state.repoPath.isNotBlank(),
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-            shape = RoundedCornerShape(10.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-            ),
-        ) {
-            Text("Generate Commit Message", style = MaterialTheme.typography.labelLarge)
-        }
+        // Tab content
+        when (selectedTab) {
+            0 -> {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    // Staged changes summary
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().height(180.dp),
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxSize().padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                "Staged Changes",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            OutlinedTextField(
+                                value = state.fileSummary,
+                                onValueChange = {},
+                                readOnly = true,
+                                placeholder = { Text("Changed files will appear here...") },
+                                textStyle = LocalTextStyle.current.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 13.sp,
+                                    lineHeight = 18.sp,
+                                ),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
 
-        // Commit message card
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(12.dp),
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(
-                    "Commit Message",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-
-                OutlinedTextField(
-                    value = state.commitSummary,
-                    onValueChange = { viewModel.updateCommitSummary(it) },
-                    label = { Text("Summary") },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                    ),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
-                OutlinedTextField(
-                    value = state.commitDescription,
-                    onValueChange = { viewModel.updateCommitDescription(it) },
-                    label = { Text("Description") },
-                    minLines = 3,
-                    maxLines = 6,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                    ),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
-                // Action buttons
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clip(RoundedCornerShape(0.dp)),
-                ) {
+                    // Generate button — primary CTA
                     Button(
-                        onClick = { viewModel.commit(andPush = pushAfterCommit) },
-                        enabled = !state.isLoading && state.commitSummary.isNotBlank(),
-                        shape = RoundedCornerShape(8.dp),
+                        onClick = { viewModel.generateCommitMessage() },
+                        enabled = !state.isLoading && state.repoPath.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.tertiary,
-                            contentColor = MaterialTheme.colorScheme.onTertiary,
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                            disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                         ),
                     ) {
-                        Text(if (pushAfterCommit) "Commit & Push" else "Commit")
+                        Text("Generate Commit Message", style = MaterialTheme.typography.labelLarge)
                     }
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(start = 4.dp),
+
+                    // Commit message card
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(12.dp),
                     ) {
-                        Checkbox(
-                            checked = pushAfterCommit,
-                            onCheckedChange = { pushAfterCommit = it },
-                            colors = CheckboxDefaults.colors(
-                                checkedColor = MaterialTheme.colorScheme.tertiary,
-                                uncheckedColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            ),
-                        )
-                        Text(
-                            "Push",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    FilledTonalButton(
-                        onClick = {
-                            val text = if (state.commitDescription.isBlank()) {
-                                state.commitSummary
-                            } else {
-                                "${state.commitSummary}\n\n${state.commitDescription}"
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Text(
+                                "Commit Message",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+
+                            OutlinedTextField(
+                                value = state.commitSummary,
+                                onValueChange = { viewModel.updateCommitSummary(it) },
+                                label = { Text("Summary") },
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+
+                            OutlinedTextField(
+                                value = state.commitDescription,
+                                onValueChange = { viewModel.updateCommitDescription(it) },
+                                label = { Text("Description") },
+                                minLines = 3,
+                                maxLines = 6,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+
+                            // Action buttons
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.clip(RoundedCornerShape(0.dp)),
+                            ) {
+                                Button(
+                                    onClick = { viewModel.commit(andPush = pushAfterCommit) },
+                                    enabled = !state.isLoading && state.commitSummary.isNotBlank(),
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.tertiary,
+                                        contentColor = MaterialTheme.colorScheme.onTertiary,
+                                    ),
+                                ) {
+                                    Text(if (pushAfterCommit) "Commit & Push" else "Commit")
+                                }
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(start = 4.dp),
+                                ) {
+                                    Checkbox(
+                                        checked = pushAfterCommit,
+                                        onCheckedChange = { pushAfterCommit = it },
+                                        colors = CheckboxDefaults.colors(
+                                            checkedColor = MaterialTheme.colorScheme.tertiary,
+                                            uncheckedColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        ),
+                                    )
+                                    Text(
+                                        "Push",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                FilledTonalButton(
+                                    onClick = {
+                                        val text = if (state.commitDescription.isBlank()) {
+                                            state.commitSummary
+                                        } else {
+                                            "${state.commitSummary}\n\n${state.commitDescription}"
+                                        }
+                                        val clipboard = Toolkit.getDefaultToolkit().systemClipboard
+                                        clipboard.setContents(StringSelection(text), null)
+                                    },
+                                    enabled = state.commitSummary.isNotBlank(),
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    ),
+                                ) {
+                                    Text("Copy to Clipboard")
+                                }
                             }
-                            val clipboard = Toolkit.getDefaultToolkit().systemClipboard
-                            clipboard.setContents(StringSelection(text), null)
-                        },
-                        enabled = state.commitSummary.isNotBlank(),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        ),
+                        }
+                    }
+                }
+            }
+            1 -> {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    // Pull Request card
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(12.dp),
                     ) {
-                        Text("Copy to Clipboard")
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Text(
+                                "Pull Request",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+
+                            ExposedDropdownMenuBox(
+                                expanded = branchDropdownExpanded,
+                                onExpandedChange = { branchDropdownExpanded = it },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                OutlinedTextField(
+                                    value = state.prTargetBranch.ifBlank { "main" },
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    label = { Text("Merge Into") },
+                                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = branchDropdownExpanded) },
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                                        .fillMaxWidth(),
+                                )
+                                ExposedDropdownMenu(
+                                    expanded = branchDropdownExpanded,
+                                    onDismissRequest = { branchDropdownExpanded = false },
+                                ) {
+                                    if (state.availableBranches.isEmpty()) {
+                                        DropdownMenuItem(
+                                            text = { Text("No branches found", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                            onClick = { branchDropdownExpanded = false },
+                                            enabled = false,
+                                        )
+                                    }
+                                    state.availableBranches.forEach { branch ->
+                                        DropdownMenuItem(
+                                            text = { Text(branch) },
+                                            onClick = {
+                                                viewModel.updatePrTargetBranch(branch)
+                                                branchDropdownExpanded = false
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+
+                            Button(
+                                onClick = { viewModel.generatePrDescription() },
+                                enabled = !state.isLoading && state.repoPath.isNotBlank(),
+                                modifier = Modifier.fillMaxWidth().height(44.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                                    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                ),
+                            ) {
+                                Text("Generate PR Description", style = MaterialTheme.typography.labelLarge)
+                            }
+
+                            OutlinedTextField(
+                                value = state.prTitle,
+                                onValueChange = { viewModel.updatePrTitle(it) },
+                                label = { Text("PR Title") },
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+
+                            OutlinedTextField(
+                                value = state.prBody,
+                                onValueChange = { viewModel.updatePrBody(it) },
+                                label = { Text("PR Description") },
+                                minLines = 3,
+                                maxLines = 6,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+
+                            Button(
+                                onClick = { viewModel.createPullRequest() },
+                                enabled = !state.isLoading && state.prTitle.isNotBlank(),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.tertiary,
+                                    contentColor = MaterialTheme.colorScheme.onTertiary,
+                                    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                ),
+                            ) {
+                                Text("Create PR")
+                            }
+
+                            if (state.prUrl.isNotBlank()) {
+                                Text(
+                                    text = state.prUrl,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        textDecoration = TextDecoration.Underline,
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(MaterialTheme.colorScheme.primaryContainer)
+                                        .padding(12.dp)
+                                        .clickable {
+                                            runCatching {
+                                                Desktop.getDesktop().browse(URI(state.prUrl))
+                                            }
+                                        },
+                                )
+                            }
+                        }
                     }
                 }
             }

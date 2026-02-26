@@ -33,6 +33,9 @@ data class ChatResponse(val choices: List<Choice>) {
 @Serializable
 data class CommitMessage(val summary: String, val description: String)
 
+@Serializable
+data class PrDescription(val title: String, val body: String)
+
 class LlmService {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -96,6 +99,51 @@ class LlmService {
         parseResponse(content)
     }
 
+    suspend fun generatePrDescription(
+        address: String,
+        modelName: String,
+        commitLog: String,
+        currentBranch: String,
+    ): Result<PrDescription> = runCatching {
+        val model = modelName.ifBlank { "local-model" }
+
+        val systemPrompt = buildString {
+            append("You are a pull request description generator. Analyze the provided git commit log and write a PR description.\n\n")
+            append("Reply in plain text using EXACTLY this format and nothing else:\n\n")
+            append("Line 1: A concise PR title under 72 characters describing the overall change\n")
+            append("(blank line)\n")
+            append("A brief 1-2 sentence summary of what was done and why.\n")
+            append("(blank line)\n")
+            append("Then a bullet-point list of the key changes. Use - for each bullet. One bullet per line. Aim for 3-6 bullets.\n\n")
+            append("Do NOT wrap your response in JSON, code fences, or markdown headers. Just plain text.")
+        }
+
+        val userPrompt = buildString {
+            append("Current branch: $currentBranch\n\n")
+            append("Generate a PR title and description for these commits:\n\n$commitLog")
+        }
+
+        val response = client.post("${address.trimEnd('/')}/chat/completions") {
+            contentType(ContentType.Application.Json)
+            setBody(
+                ChatRequest(
+                    model = model,
+                    messages = listOf(
+                        ChatMessage("system", systemPrompt),
+                        ChatMessage("user", userPrompt),
+                    ),
+                )
+            )
+        }
+
+        val body = response.bodyAsText()
+        val chatResponse = json.decodeFromString<ChatResponse>(body)
+        val content = chatResponse.choices.first().message.content.trim()
+
+        val parsed = parseResponse(content)
+        PrDescription(title = parsed.summary, body = parsed.description)
+    }
+
     private fun parseResponse(content: String): CommitMessage {
         // Strip markdown code fences if present
         val cleaned = content
@@ -121,11 +169,17 @@ class LlmService {
         }
 
         // Plain text: first line is summary, rest is description
-        val lines = cleaned.lines().map { it.trim() }.filter { it.isNotBlank() }
-        val summary = lines.firstOrNull()
+        val allLines = cleaned.lines().map { it.trim() }
+        val nonBlankLines = allLines.filter { it.isNotBlank() }
+        val summary = nonBlankLines.firstOrNull()
             ?.removeSurrounding("\"")
             ?: cleaned.take(72)
-        val description = lines.drop(1).joinToString("\n")
+        // Preserve blank lines in the body to separate summary paragraph from bullets
+        val description = allLines
+            .dropWhile { it.isNotBlank() }  // skip title
+            .dropWhile { it.isBlank() }      // skip blank line(s) after title
+            .joinToString("\n")
+            .trim()
         return CommitMessage(summary, description)
     }
 }
