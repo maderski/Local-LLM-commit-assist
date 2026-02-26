@@ -14,6 +14,7 @@ import com.maderskitech.localllmcommitassist.data.SettingsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     settingsRepository: SettingsRepository,
@@ -27,6 +28,13 @@ fun SettingsScreen(
     var testIsError by remember { mutableStateOf(false) }
     val llmService = remember { LlmService() }
     val scope = rememberCoroutineScope()
+
+    var prPlatform by remember { mutableStateOf(settingsRepository.getPrPlatform()) }
+    var githubToken by remember { mutableStateOf(settingsRepository.getGitHubToken()) }
+    var azureToken by remember { mutableStateOf(settingsRepository.getAzureDevOpsToken()) }
+    var prTargetBranch by remember { mutableStateOf(settingsRepository.getPrTargetBranch()) }
+    var prSaved by remember { mutableStateOf(false) }
+    var prDropdownExpanded by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier.fillMaxSize().padding(20.dp),
@@ -177,6 +185,117 @@ fun SettingsScreen(
                             .background(bgColor)
                             .padding(12.dp),
                     )
+                }
+            }
+        }
+
+        // Pull Request configuration card
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(12.dp),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text(
+                    "Pull Request",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+
+                ExposedDropdownMenuBox(
+                    expanded = prDropdownExpanded,
+                    onExpandedChange = { prDropdownExpanded = it },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    OutlinedTextField(
+                        value = if (prPlatform == "github") "GitHub" else "Azure DevOps",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Platform") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = prDropdownExpanded) },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                            .fillMaxWidth(),
+                    )
+                    ExposedDropdownMenu(
+                        expanded = prDropdownExpanded,
+                        onDismissRequest = { prDropdownExpanded = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("GitHub") },
+                            onClick = { prPlatform = "github"; prDropdownExpanded = false; prSaved = false },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Azure DevOps") },
+                            onClick = { prPlatform = "azure_devops"; prDropdownExpanded = false; prSaved = false },
+                        )
+                    }
+                }
+
+                OutlinedTextField(
+                    value = if (prPlatform == "github") githubToken else azureToken,
+                    onValueChange = { newValue ->
+                        if (prPlatform == "github") githubToken = newValue else azureToken = newValue
+                        prSaved = false
+                    },
+                    label = { Text(if (prPlatform == "github") "GitHub Personal Access Token" else "Azure DevOps PAT") },
+                    placeholder = { Text("Paste your token here") },
+                    singleLine = true,
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                OutlinedTextField(
+                    value = prTargetBranch,
+                    onValueChange = { prTargetBranch = it; prSaved = false },
+                    label = { Text("Target Branch") },
+                    placeholder = { Text("main") },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Button(
+                        onClick = {
+                            settingsRepository.setPrPlatform(prPlatform)
+                            settingsRepository.setGitHubToken(githubToken)
+                            settingsRepository.setAzureDevOpsToken(azureToken)
+                            settingsRepository.setPrTargetBranch(prTargetBranch)
+                            prSaved = true
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                    ) {
+                        Text("Save")
+                    }
+                    if (prSaved) {
+                        Text(
+                            "Settings saved",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.padding(start = 4.dp),
+                        )
+                    }
                 }
             }
         }

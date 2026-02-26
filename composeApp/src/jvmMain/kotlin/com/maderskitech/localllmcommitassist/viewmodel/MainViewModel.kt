@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.maderskitech.localllmcommitassist.data.GitService
 import com.maderskitech.localllmcommitassist.data.LlmService
+import com.maderskitech.localllmcommitassist.data.PrService
 import com.maderskitech.localllmcommitassist.data.SettingsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,12 +22,16 @@ data class MainUiState(
     val isLoading: Boolean = false,
     val statusMessage: String = "",
     val isError: Boolean = false,
+    val prTitle: String = "",
+    val prBody: String = "",
+    val prUrl: String = "",
 )
 
 class MainViewModel(
     private val settingsRepository: SettingsRepository = SettingsRepository(),
     private val gitService: GitService = GitService(),
     private val llmService: LlmService = LlmService(),
+    private val prService: PrService = PrService(),
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -52,6 +57,9 @@ class MainViewModel(
             commitDescription = "",
             statusMessage = "",
             isError = false,
+            prTitle = "",
+            prBody = "",
+            prUrl = "",
         )
         loadCurrentBranch(path)
     }
@@ -81,6 +89,9 @@ class MainViewModel(
             commitDescription = "",
             statusMessage = "",
             isError = false,
+            prTitle = "",
+            prBody = "",
+            prUrl = "",
         )
         loadCurrentBranch(path)
     }
@@ -100,6 +111,9 @@ class MainViewModel(
             commitDescription = "",
             statusMessage = "",
             isError = false,
+            prTitle = "",
+            prBody = "",
+            prUrl = "",
         )
         loadCurrentBranch(newSelected)
     }
@@ -110,6 +124,14 @@ class MainViewModel(
 
     fun updateCommitDescription(description: String) {
         _uiState.value = _uiState.value.copy(commitDescription = description)
+    }
+
+    fun updatePrTitle(title: String) {
+        _uiState.value = _uiState.value.copy(prTitle = title)
+    }
+
+    fun updatePrBody(body: String) {
+        _uiState.value = _uiState.value.copy(prBody = body)
     }
 
     fun generateCommitMessage() {
@@ -157,6 +179,152 @@ class MainViewModel(
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         statusMessage = "LLM error: ${e.message}",
+                        isError = true,
+                    )
+                }
+        }
+    }
+
+    fun generatePrDescription() {
+        val path = _uiState.value.repoPath.trim()
+        if (path.isBlank()) {
+            _uiState.value = _uiState.value.copy(statusMessage = "Please select a project first", isError = true)
+            return
+        }
+
+        val address = settingsRepository.getLlmAddress()
+        val model = settingsRepository.getModelName()
+        val targetBranch = settingsRepository.getPrTargetBranch()
+
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.value = _uiState.value.copy(isLoading = true, statusMessage = "Loading commit history...", isError = false)
+
+            val commitLogResult = gitService.getCommitLog(path, targetBranch)
+            commitLogResult.onFailure { e ->
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    statusMessage = "Failed to read commit log: ${e.message}",
+                    isError = true,
+                )
+                return@launch
+            }
+
+            val commitLog = commitLogResult.getOrThrow()
+            if (commitLog.isBlank()) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    statusMessage = "No commits found on this branch",
+                    isError = true,
+                )
+                return@launch
+            }
+
+            val currentBranch = _uiState.value.currentBranch
+            _uiState.value = _uiState.value.copy(statusMessage = "Generating PR description...", isError = false)
+
+            llmService.generatePrDescription(address, model, commitLog, currentBranch)
+                .onSuccess { prDescription ->
+                    _uiState.value = _uiState.value.copy(
+                        prTitle = prDescription.title,
+                        prBody = prDescription.body,
+                        isLoading = false,
+                        statusMessage = "PR description generated",
+                        isError = false,
+                    )
+                }
+                .onFailure { e ->
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        statusMessage = "LLM error: ${e.message}",
+                        isError = true,
+                    )
+                }
+        }
+    }
+
+    fun createPullRequest() {
+        val state = _uiState.value
+        val path = state.repoPath.trim()
+        if (path.isBlank()) {
+            _uiState.value = state.copy(statusMessage = "Please select a project first", isError = true)
+            return
+        }
+        if (state.prTitle.isBlank()) {
+            _uiState.value = state.copy(statusMessage = "PR title is empty", isError = true)
+            return
+        }
+
+        val platform = settingsRepository.getPrPlatform()
+        val targetBranch = settingsRepository.getPrTargetBranch()
+        val currentBranch = state.currentBranch
+
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.value = _uiState.value.copy(isLoading = true, statusMessage = "Creating pull request...", isError = false)
+
+            val remoteUrlResult = gitService.getRemoteUrl(path)
+            remoteUrlResult.onFailure { e ->
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    statusMessage = "Failed to get remote URL: ${e.message}",
+                    isError = true,
+                )
+                return@launch
+            }
+
+            val remoteUrl = remoteUrlResult.getOrThrow()
+
+            val prResult: Result<String> = when (platform) {
+                "github" -> {
+                    val token = settingsRepository.getGitHubToken()
+                    val parsed = prService.parseGitHubRemote(remoteUrl)
+                    if (parsed == null) {
+                        Result.failure(Exception("Could not parse GitHub remote URL: $remoteUrl"))
+                    } else {
+                        prService.createGitHubPr(
+                            token = token,
+                            owner = parsed.first,
+                            repo = parsed.second,
+                            title = state.prTitle,
+                            body = state.prBody,
+                            head = currentBranch,
+                            base = targetBranch,
+                        )
+                    }
+                }
+                "azure_devops" -> {
+                    val token = settingsRepository.getAzureDevOpsToken()
+                    val parsed = prService.parseAzureDevOpsRemote(remoteUrl)
+                    if (parsed == null) {
+                        Result.failure(Exception("Could not parse Azure DevOps remote URL: $remoteUrl"))
+                    } else {
+                        prService.createAzureDevOpsPr(
+                            token = token,
+                            orgUrl = parsed.first,
+                            project = parsed.second,
+                            repo = parsed.third,
+                            title = state.prTitle,
+                            description = state.prBody,
+                            sourceBranch = currentBranch,
+                            targetBranch = targetBranch,
+                        )
+                    }
+                }
+                else -> Result.failure(Exception("Unknown platform: $platform"))
+            }
+
+            prResult
+                .onSuccess { url ->
+                    _uiState.value = _uiState.value.copy(
+                        prUrl = url,
+                        isLoading = false,
+                        statusMessage = "Pull request created successfully!",
+                        isError = false,
+                    )
+                }
+                .onFailure { e ->
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        statusMessage = "PR creation failed: ${e.message}",
                         isError = true,
                     )
                 }

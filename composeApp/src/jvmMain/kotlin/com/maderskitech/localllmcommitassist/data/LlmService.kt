@@ -33,6 +33,9 @@ data class ChatResponse(val choices: List<Choice>) {
 @Serializable
 data class CommitMessage(val summary: String, val description: String)
 
+@Serializable
+data class PrDescription(val title: String, val body: String)
+
 class LlmService {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -94,6 +97,48 @@ class LlmService {
         val content = chatResponse.choices.first().message.content.trim()
 
         parseResponse(content)
+    }
+
+    suspend fun generatePrDescription(
+        address: String,
+        modelName: String,
+        commitLog: String,
+        currentBranch: String,
+    ): Result<PrDescription> = runCatching {
+        val model = modelName.ifBlank { "local-model" }
+
+        val systemPrompt = buildString {
+            append("You are a pull request description generator. Analyze the provided git commit log and write a PR description.\n\n")
+            append("Reply with EXACTLY two lines and nothing else:\n")
+            append("Line 1: A concise PR title under 72 characters describing the overall change\n")
+            append("Line 2: A bullet-point body (use - for bullets) summarizing the key changes from the commits\n\n")
+            append("Do NOT wrap your response in JSON, code fences, or quotes. Just plain text, two lines.")
+        }
+
+        val userPrompt = buildString {
+            append("Current branch: $currentBranch\n\n")
+            append("Generate a PR title and description for these commits:\n\n$commitLog")
+        }
+
+        val response = client.post("${address.trimEnd('/')}/chat/completions") {
+            contentType(ContentType.Application.Json)
+            setBody(
+                ChatRequest(
+                    model = model,
+                    messages = listOf(
+                        ChatMessage("system", systemPrompt),
+                        ChatMessage("user", userPrompt),
+                    ),
+                )
+            )
+        }
+
+        val body = response.bodyAsText()
+        val chatResponse = json.decodeFromString<ChatResponse>(body)
+        val content = chatResponse.choices.first().message.content.trim()
+
+        val parsed = parseResponse(content)
+        PrDescription(title = parsed.summary, body = parsed.description)
     }
 
     private fun parseResponse(content: String): CommitMessage {

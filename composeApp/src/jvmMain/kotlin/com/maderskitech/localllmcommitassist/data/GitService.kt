@@ -114,6 +114,43 @@ class GitService {
         output
     }
 
+    fun getCommitLog(repoPath: String, baseBranch: String): Result<String> = runCatching {
+        val process = ProcessBuilder("git", "log", "--oneline", "$baseBranch..HEAD")
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText().trim()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0 || output.isBlank()) {
+            val fallback = ProcessBuilder("git", "log", "--oneline", "-n", "10")
+                .directory(File(repoPath))
+                .redirectErrorStream(true)
+                .start()
+            val fallbackOutput = fallback.inputStream.bufferedReader().readText().trim()
+            if (fallback.waitFor() != 0) error("git log fallback failed: $fallbackOutput")
+            fallbackOutput
+        } else {
+            output
+        }
+    }
+
+    fun getRemoteUrl(repoPath: String): Result<String> = runCatching {
+        val process = ProcessBuilder("git", "remote", "get-url", "origin")
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText().trim()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git remote get-url origin failed (exit $exitCode): $output")
+        }
+        output
+    }
+
     fun push(repoPath: String): Result<String> = runCatching {
         val process = ProcessBuilder("git", "push")
             .directory(File(repoPath))
