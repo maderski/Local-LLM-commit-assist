@@ -13,7 +13,7 @@ fun main() = application {
         onCloseRequest = ::exitApplication,
         title = "Local LLM Commit Assist",
         icon = icon,
-        state = WindowState(size = DpSize(900.dp, 900.dp)),
+        state = WindowState(size = DpSize(900.dp, 1000.dp)),
     ) {
         App()
     }
