@@ -55,6 +55,12 @@ class SettingsRepository {
         prefs.put(KEY_GITHUB_TOKEN, token)
     }
 
+    fun getAzureDevOpsUsername(): String = prefs.get(KEY_AZURE_DEVOPS_USERNAME, "")
+
+    fun setAzureDevOpsUsername(username: String) {
+        prefs.put(KEY_AZURE_DEVOPS_USERNAME, username)
+    }
+
     fun getAzureDevOpsToken(): String = prefs.get(KEY_AZURE_DEVOPS_TOKEN, "")
 
     fun setAzureDevOpsToken(token: String) {
@@ -74,6 +80,7 @@ class SettingsRepository {
         private const val KEY_SELECTED_PROJECT = "selected_project"
         private const val KEY_PR_PLATFORM = "pr_platform"
         private const val KEY_GITHUB_TOKEN = "github_token"
+        private const val KEY_AZURE_DEVOPS_USERNAME = "azure_devops_username"
         private const val KEY_AZURE_DEVOPS_TOKEN = "azure_devops_token"
         private const val KEY_PR_TARGET_BRANCH = "pr_target_branch"
         private const val DEFAULT_LLM_ADDRESS = "http://localhost:1234/v1"

@@ -31,6 +31,7 @@ fun SettingsScreen(
 
     var prPlatform by remember { mutableStateOf(settingsRepository.getPrPlatform()) }
     var githubToken by remember { mutableStateOf(settingsRepository.getGitHubToken()) }
+    var azureUsername by remember { mutableStateOf(settingsRepository.getAzureDevOpsUsername()) }
     var azureToken by remember { mutableStateOf(settingsRepository.getAzureDevOpsToken()) }
     var prSaved by remember { mutableStateOf(false) }
     var prDropdownExpanded by remember { mutableStateOf(false) }
@@ -239,6 +240,22 @@ fun SettingsScreen(
                     }
                 }
 
+                if (prPlatform == "azure_devops") {
+                    OutlinedTextField(
+                        value = azureUsername,
+                        onValueChange = { azureUsername = it; prSaved = false },
+                        label = { Text("Azure DevOps Username") },
+                        placeholder = { Text("Enter your username") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+
                 OutlinedTextField(
                     value = if (prPlatform == "github") githubToken else azureToken,
                     onValueChange = { newValue ->
@@ -265,6 +282,7 @@ fun SettingsScreen(
                         onClick = {
                             settingsRepository.setPrPlatform(prPlatform)
                             settingsRepository.setGitHubToken(githubToken)
+                            settingsRepository.setAzureDevOpsUsername(azureUsername)
                             settingsRepository.setAzureDevOpsToken(azureToken)
                             prSaved = true
                         },

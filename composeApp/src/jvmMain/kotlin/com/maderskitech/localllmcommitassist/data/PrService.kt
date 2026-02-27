@@ -86,6 +86,7 @@ class PrService {
 
     suspend fun createAzureDevOpsPr(
         token: String,
+        username: String,
         orgUrl: String,
         project: String,
         repo: String,
@@ -94,7 +95,7 @@ class PrService {
         sourceBranch: String,
         targetBranch: String,
     ): Result<String> = runCatching {
-        val encodedToken = Base64.getEncoder().encodeToString(":$token".toByteArray())
+        val encodedToken = Base64.getEncoder().encodeToString("$username:$token".toByteArray())
         val url = "$orgUrl/$project/_apis/git/repositories/$repo/pullrequests?api-version=7.1"
 
         val response = client.post(url) {
