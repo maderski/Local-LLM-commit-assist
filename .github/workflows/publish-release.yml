@@ -1,0 +1,87 @@
+name: Publish Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-release-main
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Compute next version tag
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+
+          latest_tag="$(git tag -l | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
+          if [[ -z "${latest_tag}" ]]; then
+            latest_tag="v0.0.0"
+          fi
+
+          version="${latest_tag#v}"
+          IFS='.' read -r major minor patch <<< "${version}"
+          patch=$((patch + 1))
+          next_version="${major}.${minor}.${patch}"
+          next_tag="v${next_version}"
+
+          echo "version=${next_version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${next_tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Build DMG
+        shell: bash
+        run: ./gradlew :composeApp:packageDmg -PappVersion="${{ steps.version.outputs.version }}"
+
+      - name: Locate DMG
+        id: artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          dmg_path="$(find composeApp/build/compose/binaries/main/dmg -type f -name '*.dmg' | head -n 1)"
+          if [[ -z "${dmg_path}" ]]; then
+            echo "No DMG artifact found."
+            exit 1
+          fi
+          echo "dmg=${dmg_path}" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ steps.version.outputs.tag }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${tag}" -m "Release ${tag}"
+          git push origin "${tag}"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "${{ steps.version.outputs.tag }}" \
+            "${{ steps.artifact.outputs.dmg }}" \
+            --title "${{ steps.version.outputs.tag }}" \
+            --generate-notes
