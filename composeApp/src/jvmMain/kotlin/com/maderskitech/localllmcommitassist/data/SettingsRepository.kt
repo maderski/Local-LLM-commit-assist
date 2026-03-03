@@ -5,6 +5,32 @@ import java.util.prefs.Preferences
 class SettingsRepository {
     private val prefs = Preferences.userNodeForPackage(SettingsRepository::class.java)
 
+    private val encryptionKey: String by lazy {
+        val existing = prefs.get(KEY_ENCRYPTION_KEY, "")
+        if (existing.isNotEmpty()) {
+            existing
+        } else {
+            val newKey = TokenEncryption.generateKey()
+            prefs.put(KEY_ENCRYPTION_KEY, newKey)
+            newKey
+        }
+    }
+
+    private fun encryptToken(plaintext: String): String =
+        TokenEncryption.encrypt(plaintext, encryptionKey)
+
+    private fun decryptToken(prefsKey: String): String {
+        val stored = prefs.get(prefsKey, "")
+        if (stored.isEmpty()) return ""
+        return try {
+            TokenEncryption.decrypt(stored, encryptionKey)
+        } catch (_: Exception) {
+            // Stored value is plaintext (pre-encryption migration) — encrypt it in place
+            prefs.put(prefsKey, TokenEncryption.encrypt(stored, encryptionKey))
+            stored
+        }
+    }
+
     fun getLlmAddress(): String = prefs.get(KEY_LLM_ADDRESS, DEFAULT_LLM_ADDRESS)
 
     fun setLlmAddress(address: String) {
@@ -49,10 +75,10 @@ class SettingsRepository {
         prefs.put(KEY_PR_PLATFORM, platform)
     }
 
-    fun getGitHubToken(): String = prefs.get(KEY_GITHUB_TOKEN, "")
+    fun getGitHubToken(): String = decryptToken(KEY_GITHUB_TOKEN)
 
     fun setGitHubToken(token: String) {
-        prefs.put(KEY_GITHUB_TOKEN, token)
+        prefs.put(KEY_GITHUB_TOKEN, encryptToken(token))
     }
 
     fun getAzureDevOpsUsername(): String = prefs.get(KEY_AZURE_DEVOPS_USERNAME, "")
@@ -61,10 +87,10 @@ class SettingsRepository {
         prefs.put(KEY_AZURE_DEVOPS_USERNAME, username)
     }
 
-    fun getAzureDevOpsToken(): String = prefs.get(KEY_AZURE_DEVOPS_TOKEN, "")
+    fun getAzureDevOpsToken(): String = decryptToken(KEY_AZURE_DEVOPS_TOKEN)
 
     fun setAzureDevOpsToken(token: String) {
-        prefs.put(KEY_AZURE_DEVOPS_TOKEN, token)
+        prefs.put(KEY_AZURE_DEVOPS_TOKEN, encryptToken(token))
     }
 
     fun getPrTargetBranch(): String = prefs.get(KEY_PR_TARGET_BRANCH, DEFAULT_PR_TARGET_BRANCH)
@@ -82,6 +108,7 @@ class SettingsRepository {
         private const val KEY_GITHUB_TOKEN = "github_token"
         private const val KEY_AZURE_DEVOPS_USERNAME = "azure_devops_username"
         private const val KEY_AZURE_DEVOPS_TOKEN = "azure_devops_token"
+        private const val KEY_ENCRYPTION_KEY = "encryption_key"
         private const val KEY_PR_TARGET_BRANCH = "pr_target_branch"
         private const val DEFAULT_LLM_ADDRESS = "http://localhost:1234/v1"
         private const val DEFAULT_MODEL_NAME = ""

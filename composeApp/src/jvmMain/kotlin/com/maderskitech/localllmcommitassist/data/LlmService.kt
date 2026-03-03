@@ -2,6 +2,7 @@ package com.maderskitech.localllmcommitassist.data
 
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
@@ -10,6 +11,8 @@ import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -42,6 +45,11 @@ class LlmService {
     private val client = HttpClient(CIO) {
         install(ContentNegotiation) {
             json(json)
+        }
+        install(HttpTimeout) {
+            requestTimeoutMillis = 5 * 60 * 1000 // 5 minutes
+            connectTimeoutMillis = 30 * 1000      // 30 seconds
+            socketTimeoutMillis = 5 * 60 * 1000   // 5 minutes
         }
     }
 
@@ -155,31 +163,95 @@ class LlmService {
         if (cleaned.startsWith("{")) {
             try {
                 val parsed = json.parseToJsonElement(cleaned).jsonObject
-                val summary = parsed["summary"]?.jsonPrimitive?.content.orEmpty()
-                val descriptionElement = parsed["description"]
-                val description = when (descriptionElement) {
-                    is JsonArray -> descriptionElement.joinToString("\n") { "- ${(it as JsonPrimitive).content}" }
-                    is JsonPrimitive -> descriptionElement.content
-                    else -> ""
-                }
+                val summary = listOf("summary", "title", "subject")
+                    .asSequence()
+                    .mapNotNull { key -> parsed[key]?.asPlainText()?.takeIf { it.isNotBlank() } }
+                    .firstOrNull()
+                    .orEmpty()
+
+                val description = listOf("description", "body", "details", "changes", "bullets")
+                    .asSequence()
+                    .mapNotNull { key -> parsed[key]?.asPlainText()?.takeIf { it.isNotBlank() } }
+                    .firstOrNull()
+                    .orEmpty()
+
                 return CommitMessage(summary, description)
             } catch (_: Exception) {
                 // Fall through to plain text parsing
             }
         }
 
-        // Plain text: first line is summary, rest is description
-        val allLines = cleaned.lines().map { it.trim() }
-        val nonBlankLines = allLines.filter { it.isNotBlank() }
-        val summary = nonBlankLines.firstOrNull()
-            ?.removeSurrounding("\"")
-            ?: cleaned.take(72)
-        // Preserve blank lines in the body to separate summary paragraph from bullets
-        val description = allLines
-            .dropWhile { it.isNotBlank() }  // skip title
-            .dropWhile { it.isBlank() }      // skip blank line(s) after title
+        val labeledSummary = Regex("(?im)^\\s*summary\\s*:\\s*(.+)$")
+            .find(cleaned)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.trim()
+            .orEmpty()
+        val labeledDescription = Regex("(?is)\\bdescription\\s*:\\s*(.+)$")
+            .find(cleaned)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.trim()
+            .orEmpty()
+        if (labeledSummary.isNotBlank() && labeledDescription.isNotBlank()) {
+            return CommitMessage(labeledSummary, labeledDescription)
+        }
+
+        // Plain text: first non-blank line is summary, everything after it is description.
+        val allLines = cleaned.lines()
+        val summaryLineIndex = allLines.indexOfFirst { it.isNotBlank() }
+        val summary = if (summaryLineIndex >= 0) {
+            allLines[summaryLineIndex].trim().removeSurrounding("\"")
+        } else {
+            cleaned.take(72)
+        }
+
+        val description = if (summaryLineIndex >= 0) {
+            allLines
+                .drop(summaryLineIndex + 1)
+                .dropWhile { it.isBlank() }
+                .joinToString("\n")
+                .trim()
+        } else {
+            ""
+        }
+
+        var normalizedDescription = if (description.isBlank() && allLines.size > summaryLineIndex + 1) {
+            // Fallback for terse model output where formatting is unusual but content exists.
+            allLines.drop(summaryLineIndex + 1).joinToString(" ").trim()
+        } else {
+            description
+        }
+
+        // Handle single-line outputs like: "Add X - explain Y".
+        if (normalizedDescription.isBlank()) {
+            val compact = summary.trim()
+            val separators = listOf(" - ", " — ", ": ")
+            for (separator in separators) {
+                val parts = compact.split(separator, limit = 2)
+                if (parts.size == 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) {
+                    return CommitMessage(parts[0].trim(), parts[1].trim())
+                }
+            }
+        }
+
+        return CommitMessage(summary, normalizedDescription)
+    }
+
+    private fun JsonElement.asPlainText(): String = when (this) {
+        is JsonPrimitive -> content.trim()
+        is JsonArray -> this
+            .mapNotNull { element ->
+                val text = element.asPlainText().trim()
+                text.takeIf { it.isNotBlank() }
+            }
+            .joinToString("\n") { line -> if (line.startsWith("- ")) line else "- $line" }
+        is JsonObject -> this.entries
+            .sortedBy { it.key }
+            .mapNotNull { (_, value) ->
+                val text = value.asPlainText().trim()
+                text.takeIf { it.isNotBlank() }
+            }
             .joinToString("\n")
-            .trim()
-        return CommitMessage(summary, description)
     }
 }

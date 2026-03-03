@@ -2,6 +2,7 @@ package com.maderskitech.localllmcommitassist.data
 
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
@@ -35,6 +36,11 @@ class PrService {
     private val client = HttpClient(CIO) {
         install(ContentNegotiation) {
             json(json)
+        }
+        install(HttpTimeout) {
+            requestTimeoutMillis = 5 * 60 * 1000 // 5 minutes
+            connectTimeoutMillis = 30 * 1000      // 30 seconds
+            socketTimeoutMillis = 5 * 60 * 1000   // 5 minutes
         }
     }
 
