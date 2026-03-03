@@ -316,12 +316,14 @@ class MainViewModel(
                 }
                 "azure_devops" -> {
                     val token = settingsRepository.getAzureDevOpsToken()
+                    val username = settingsRepository.getAzureDevOpsUsername()
                     val parsed = prService.parseAzureDevOpsRemote(remoteUrl)
                     if (parsed == null) {
                         Result.failure(Exception("Could not parse Azure DevOps remote URL: $remoteUrl"))
                     } else {
                         prService.createAzureDevOpsPr(
                             token = token,
+                            username = username,
                             orgUrl = parsed.first,
                             project = parsed.second,
                             repo = parsed.third,

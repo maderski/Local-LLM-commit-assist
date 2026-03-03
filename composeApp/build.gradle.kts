@@ -1,4 +1,5 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import java.io.File
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -51,10 +52,16 @@ compose.desktop {
         mainClass = "com.maderskitech.localllmcommitassist.MainKt"
 
         nativeDistributions {
+            val projectVersion = project.version.toString()
+            val resolvedVersion = (findProperty("appVersion") as String?)?.takeIf { it.isNotBlank() }
+                ?: if (projectVersion.isBlank() || projectVersion == "unspecified") "1.2.0" else projectVersion
             targetFormats(TargetFormat.Dmg)
             packageName = "Local LLM Commit Assist"
-            packageVersion = "1.1.0"
-            javaHome = "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
+            packageVersion = resolvedVersion
+            val envJavaHome = System.getenv("JAVA_HOME")
+            if (!envJavaHome.isNullOrBlank() && File(envJavaHome).exists()) {
+                javaHome = envJavaHome
+            }
             macOS {
                 bundleID = "com.maderskitech.localllmcommitassist"
                 appCategory = "public.app-category.developer-tools"
