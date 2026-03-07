@@ -120,17 +120,27 @@ class LlmService {
         modelName: String,
         commitLog: String,
         currentBranch: String,
+        prTemplate: String? = null,
     ): Result<PrDescription> = runCatching {
         val model = modelName.ifBlank { "local-model" }
 
         val systemPrompt = buildString {
             append("You are a pull request description generator. Analyze the provided git commit log and write a PR description.\n\n")
+            if (!prTemplate.isNullOrBlank()) {
+                append("IMPORTANT: The repository has a PR template. You MUST follow this template structure for the PR description body. ")
+                append("Fill in each section of the template based on the commit log.\n\n")
+                append("PR Template:\n$prTemplate\n\n")
+            }
             append("Reply in plain text using EXACTLY this format and nothing else:\n\n")
             append("Line 1: A concise PR title under 72 characters describing the overall change\n")
             append("(blank line)\n")
-            append("A brief 1-2 sentence summary of what was done and why.\n")
-            append("(blank line)\n")
-            append("Then a bullet-point list of the key changes. Use - for each bullet. One bullet per line. Aim for 3-6 bullets.\n\n")
+            if (!prTemplate.isNullOrBlank()) {
+                append("The PR description body following the provided template structure, with each section filled in based on the commits.\n\n")
+            } else {
+                append("A brief 1-2 sentence summary of what was done and why.\n")
+                append("(blank line)\n")
+                append("Then a bullet-point list of the key changes. Use - for each bullet. One bullet per line. Aim for 3-6 bullets.\n\n")
+            }
             append("Do NOT wrap your response in JSON, code fences, or markdown headers. Just plain text.")
         }
 

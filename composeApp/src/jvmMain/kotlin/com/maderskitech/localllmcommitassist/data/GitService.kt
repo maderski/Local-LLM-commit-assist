@@ -164,6 +164,35 @@ class GitService {
         output
     }
 
+    fun readPrTemplate(repoPath: String, platform: String): Result<String?> = runCatching {
+        val templatePaths = when (platform) {
+            "github" -> listOf(
+                ".github/pull_request_template.md",
+                ".github/PULL_REQUEST_TEMPLATE.md",
+                ".github/PULL_REQUEST_TEMPLATE/pull_request_template.md",
+                "pull_request_template.md",
+                "PULL_REQUEST_TEMPLATE.md",
+                "docs/pull_request_template.md",
+            )
+            "azure_devops" -> listOf(
+                ".azuredevops/pull_request_template.md",
+                ".azuredevops/PULL_REQUEST_TEMPLATE.md",
+                "pull_request_template.md",
+                "PULL_REQUEST_TEMPLATE.md",
+                "docs/pull_request_template.md",
+            )
+            else -> emptyList()
+        }
+
+        for (path in templatePaths) {
+            val file = File(repoPath, path)
+            if (file.exists() && file.isFile) {
+                return@runCatching file.readText()
+            }
+        }
+        null
+    }
+
     fun push(repoPath: String): Result<String> = runCatching {
         val process = ProcessBuilder("git", "push")
             .directory(File(repoPath))
