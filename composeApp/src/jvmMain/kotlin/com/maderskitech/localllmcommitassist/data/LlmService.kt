@@ -104,7 +104,15 @@ class LlmService {
         val chatResponse = json.decodeFromString<ChatResponse>(body)
         val content = chatResponse.choices.first().message.content.trim()
 
-        parseResponse(content)
+        val parsed = parseResponse(content)
+        val summary = parsed.summary.ifBlank { "Update project files" }
+        if (parsed.description.isNotBlank()) {
+            return@runCatching CommitMessage(summary, parsed.description)
+        }
+
+        val fallbackDescription = generateCommitDescriptionFallback(address, model, summary, diff)
+            .ifBlank { buildDefaultDescription(diff, summary) }
+        CommitMessage(summary, fallbackDescription)
     }
 
     suspend fun generatePrDescription(
@@ -236,6 +244,79 @@ class LlmService {
         }
 
         return CommitMessage(summary, normalizedDescription)
+    }
+
+    private suspend fun generateCommitDescriptionFallback(
+        address: String,
+        model: String,
+        summary: String,
+        diff: String,
+    ): String {
+        val systemPrompt = buildString {
+            append("You generate only commit message descriptions.\n")
+            append("Return plain text body only, no title, no JSON, no code fences.\n")
+            append("Write 2-4 bullet points using '- ' explaining key changes and impact.")
+        }
+        val userPrompt = buildString {
+            append("Commit summary: $summary\n\n")
+            append("Diff:\n$diff")
+        }
+
+        val response = client.post("${address.trimEnd('/')}/chat/completions") {
+            contentType(ContentType.Application.Json)
+            setBody(
+                ChatRequest(
+                    model = model,
+                    messages = listOf(
+                        ChatMessage("system", systemPrompt),
+                        ChatMessage("user", userPrompt),
+                    ),
+                    temperature = 0.2,
+                )
+            )
+        }
+
+        val body = response.bodyAsText()
+        val chatResponse = json.decodeFromString<ChatResponse>(body)
+        val raw = chatResponse.choices.firstOrNull()?.message?.content.orEmpty()
+        val cleaned = raw
+            .removePrefix("```text").removePrefix("```markdown").removePrefix("```")
+            .removeSuffix("```")
+            .trim()
+            .lines()
+            .dropWhile { it.isBlank() }
+            .filterNot { line ->
+                val normalized = line.trim().lowercase()
+                normalized.startsWith("summary:") || normalized.startsWith("title:")
+            }
+            .joinToString("\n")
+            .trim()
+        return cleaned
+    }
+
+    private fun buildDefaultDescription(diff: String, summary: String): String {
+        val files = diff.lineSequence()
+            .filter { it.startsWith("diff --git ") }
+            .mapNotNull { line ->
+                val parts = line.split(" ")
+                parts.getOrNull(2)?.removePrefix("a/")
+            }
+            .distinct()
+            .toList()
+
+        val additions = diff.lineSequence()
+            .count { it.startsWith("+") && !it.startsWith("+++") }
+        val deletions = diff.lineSequence()
+            .count { it.startsWith("-") && !it.startsWith("---") }
+
+        val firstFile = files.firstOrNull() ?: "project files"
+        return buildString {
+            append("- ")
+            append(summary)
+            append(".\n")
+            append("- Updated ${files.size.coerceAtLeast(1)} file(s), including $firstFile.\n")
+            append("- Net diff: +$additions / -$deletions lines.")
+        }
     }
 
     private fun JsonElement.asPlainText(): String = when (this) {
