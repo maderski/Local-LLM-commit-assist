@@ -460,18 +460,44 @@ fun MainScreen(
                                 modifier = Modifier.fillMaxWidth(),
                             )
 
-                            Button(
-                                onClick = { viewModel.createPullRequest() },
-                                enabled = !state.isLoading && state.prTitle.isNotBlank(),
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.tertiary,
-                                    contentColor = MaterialTheme.colorScheme.onTertiary,
-                                    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                ),
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text("Create PR")
+                                Button(
+                                    onClick = { viewModel.createPullRequest() },
+                                    enabled = !state.isLoading && state.prTitle.isNotBlank(),
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.tertiary,
+                                        contentColor = MaterialTheme.colorScheme.onTertiary,
+                                        disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                        disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                    ),
+                                ) {
+                                    Text("Create PR")
+                                }
+                                FilledTonalButton(
+                                    onClick = {
+                                        val text = buildString {
+                                            append(state.prTitle)
+                                            if (state.prBody.isNotBlank()) {
+                                                append("\n\n")
+                                                append(state.prBody)
+                                            }
+                                        }
+                                        val clipboard = Toolkit.getDefaultToolkit().systemClipboard
+                                        clipboard.setContents(StringSelection(text), null)
+                                    },
+                                    enabled = state.prTitle.isNotBlank(),
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    ),
+                                ) {
+                                    Text("Copy to Clipboard")
+                                }
                             }
 
                             if (state.prUrl.isNotBlank()) {

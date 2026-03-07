@@ -27,6 +27,7 @@ data class MainUiState(
     val prTitle: String = "",
     val prBody: String = "",
     val prUrl: String = "",
+    val prTemplate: String = "",
 )
 
 class MainViewModel(
@@ -242,10 +243,14 @@ class MainViewModel(
                 return@launch
             }
 
+            val platform = settingsRepository.getPrPlatform()
+            val template = gitService.readPrTemplate(path, platform).getOrNull()
+            _uiState.value = _uiState.value.copy(prTemplate = template.orEmpty())
+
             val currentBranch = _uiState.value.currentBranch
             _uiState.value = _uiState.value.copy(statusMessage = "Generating PR description...", isError = false)
 
-            llmService.generatePrDescription(address, model, commitLog, currentBranch)
+            llmService.generatePrDescription(address, model, commitLog, currentBranch, template)
                 .onSuccess { prDescription ->
                     _uiState.value = _uiState.value.copy(
                         prTitle = prDescription.title,
