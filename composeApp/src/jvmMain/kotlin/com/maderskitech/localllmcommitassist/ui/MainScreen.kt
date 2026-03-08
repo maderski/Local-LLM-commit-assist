@@ -145,6 +145,16 @@ fun MainScreen(
 
                     if (state.repoPath.isNotBlank()) {
                         OutlinedButton(
+                            onClick = { viewModel.openTerminal() },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.primary,
+                            ),
+                        ) {
+                            Text("Open in Terminal")
+                        }
+
+                        OutlinedButton(
                             onClick = { viewModel.removeProject(state.repoPath) },
                             shape = RoundedCornerShape(8.dp),
                             colors = ButtonDefaults.outlinedButtonColors(
