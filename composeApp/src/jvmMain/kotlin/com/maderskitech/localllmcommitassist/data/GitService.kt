@@ -280,6 +280,36 @@ class GitService {
         output
     }
 
+    fun hasUncommittedChanges(repoPath: String): Result<Boolean> = runCatching {
+        val process = ProcessBuilder("git", "status", "--porcelain")
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git status --porcelain failed (exit $exitCode): $output")
+        }
+        output.isNotBlank()
+    }
+
+    fun stashChanges(repoPath: String): Result<String> = runCatching {
+        val process = ProcessBuilder("git", "stash")
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git stash failed (exit $exitCode): $output")
+        }
+        output
+    }
+
     fun push(repoPath: String): Result<String> = runCatching {
         val process = ProcessBuilder("git", "push")
             .directory(File(repoPath))

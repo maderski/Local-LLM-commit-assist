@@ -763,6 +763,27 @@ fun MainScreen(
             )
         }
 
+        // Branch switch with uncommitted changes dialog
+        if (state.showBranchSwitchDialog) {
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissBranchSwitchDialog() },
+                title = { Text("Uncommitted Changes") },
+                text = { Text("You have uncommitted changes. What would you like to do?") },
+                confirmButton = {
+                    Button(
+                        onClick = { viewModel.onBranchSwitchBringChanges() },
+                    ) {
+                        Text("Bring Changes")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.onBranchSwitchLeaveChanges() }) {
+                        Text("Leave Changes")
+                    }
+                },
+            )
+        }
+
         if (state.statusMessage.isNotBlank()) {
             val bgColor = if (state.isError)
                 MaterialTheme.colorScheme.errorContainer

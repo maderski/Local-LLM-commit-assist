@@ -29,6 +29,8 @@ data class MainUiState(
     val prUrl: String = "",
     val prTemplate: String = "",
     val isCurrentBranchPublished: Boolean = false,
+    val showBranchSwitchDialog: Boolean = false,
+    val pendingSwitchBranch: String = "",
 )
 
 class MainViewModel(
@@ -99,27 +101,79 @@ class MainViewModel(
         val path = _uiState.value.repoPath.trim()
         if (path.isBlank() || branch == _uiState.value.currentBranch) return
         viewModelScope.launch(Dispatchers.IO) {
-            gitService.checkoutBranch(path, branch)
+            val hasChanges = gitService.hasUncommittedChanges(path).getOrDefault(false)
+            if (hasChanges) {
+                _uiState.value = _uiState.value.copy(
+                    showBranchSwitchDialog = true,
+                    pendingSwitchBranch = branch,
+                )
+            } else {
+                performCheckout(path, branch)
+            }
+        }
+    }
+
+    private suspend fun performCheckout(path: String, branch: String) {
+        gitService.checkoutBranch(path, branch)
+            .onSuccess {
+                val published = gitService.hasUpstreamBranch(path, branch).getOrDefault(false)
+                _uiState.value = _uiState.value.copy(
+                    currentBranch = branch,
+                    isCurrentBranchPublished = published,
+                    fileSummary = "",
+                    fullDiff = "",
+                    commitSummary = "",
+                    commitDescription = "",
+                    statusMessage = "Switched to branch '$branch'",
+                    isError = false,
+                    showBranchSwitchDialog = false,
+                    pendingSwitchBranch = "",
+                )
+            }
+            .onFailure { e ->
+                _uiState.value = _uiState.value.copy(
+                    statusMessage = "Branch switch failed: ${e.message}",
+                    isError = true,
+                    showBranchSwitchDialog = false,
+                    pendingSwitchBranch = "",
+                )
+            }
+    }
+
+    fun onBranchSwitchBringChanges() {
+        val path = _uiState.value.repoPath.trim()
+        val branch = _uiState.value.pendingSwitchBranch
+        if (path.isBlank() || branch.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            performCheckout(path, branch)
+        }
+    }
+
+    fun onBranchSwitchLeaveChanges() {
+        val path = _uiState.value.repoPath.trim()
+        val branch = _uiState.value.pendingSwitchBranch
+        if (path.isBlank() || branch.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            gitService.stashChanges(path)
                 .onSuccess {
-                    val published = gitService.hasUpstreamBranch(path, branch).getOrDefault(false)
-                    _uiState.value = _uiState.value.copy(
-                        currentBranch = branch,
-                        isCurrentBranchPublished = published,
-                        fileSummary = "",
-                        fullDiff = "",
-                        commitSummary = "",
-                        commitDescription = "",
-                        statusMessage = "Switched to branch '$branch'",
-                        isError = false,
-                    )
+                    performCheckout(path, branch)
                 }
                 .onFailure { e ->
                     _uiState.value = _uiState.value.copy(
-                        statusMessage = "Branch switch failed: ${e.message}",
+                        statusMessage = "Stash failed: ${e.message}",
                         isError = true,
+                        showBranchSwitchDialog = false,
+                        pendingSwitchBranch = "",
                     )
                 }
         }
+    }
+
+    fun dismissBranchSwitchDialog() {
+        _uiState.value = _uiState.value.copy(
+            showBranchSwitchDialog = false,
+            pendingSwitchBranch = "",
+        )
     }
 
     fun updatePrTargetBranch(branch: String) {
