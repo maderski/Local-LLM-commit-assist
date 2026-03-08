@@ -57,11 +57,34 @@ class PrService {
     }
 
     fun parseAzureDevOpsRemote(remoteUrl: String): Triple<String, String, String>? {
-        val regex = Regex("""https://(?:[^@]+@)?dev\.azure\.com/([^/]+)/([^/]+)/_git/(.+)""")
-        regex.find(remoteUrl)?.destructured?.let { (org, project, repo) ->
+        // HTTPS: https://[user@]dev.azure.com/org/project/_git/repo[.git]
+        val devAzureRegex = Regex("""https://(?:[^@]+@)?dev\.azure\.com/([^/]+)/([^/]+)/_git/(.+?)(?:\.git)?$""")
+        devAzureRegex.find(remoteUrl)?.destructured?.let { (org, project, repo) ->
             val orgUrl = "https://dev.azure.com/$org"
             return Triple(orgUrl, project, repo)
         }
+
+        // SSH: git@ssh.dev.azure.com:v3/org/project/repo
+        val sshRegex = Regex("""git@ssh\.dev\.azure\.com:v3/([^/]+)/([^/]+)/(.+?)(?:\.git)?$""")
+        sshRegex.find(remoteUrl)?.destructured?.let { (org, project, repo) ->
+            val orgUrl = "https://dev.azure.com/$org"
+            return Triple(orgUrl, project, repo)
+        }
+
+        // Legacy HTTPS: https://org.visualstudio.com/project/_git/repo[.git]
+        val vstsRegex = Regex("""https://([^.]+)\.visualstudio\.com/([^/]+)/_git/(.+?)(?:\.git)?$""")
+        vstsRegex.find(remoteUrl)?.destructured?.let { (org, project, repo) ->
+            val orgUrl = "https://dev.azure.com/$org"
+            return Triple(orgUrl, project, repo)
+        }
+
+        // Legacy HTTPS with DefaultCollection: https://org.visualstudio.com/DefaultCollection/project/_git/repo[.git]
+        val vstsDefaultCollectionRegex = Regex("""https://([^.]+)\.visualstudio\.com/DefaultCollection/([^/]+)/_git/(.+?)(?:\.git)?$""")
+        vstsDefaultCollectionRegex.find(remoteUrl)?.destructured?.let { (org, project, repo) ->
+            val orgUrl = "https://dev.azure.com/$org"
+            return Triple(orgUrl, project, repo)
+        }
+
         return null
     }
 

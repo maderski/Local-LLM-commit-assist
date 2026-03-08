@@ -362,6 +362,16 @@ class MainViewModel(
     }
 
     private fun loadDiff(path: String): String? {
+        _uiState.value = _uiState.value.copy(statusMessage = "Staging all changes...", isError = false)
+        gitService.stageAll(path).onFailure { e ->
+            _uiState.value = _uiState.value.copy(
+                isLoading = false,
+                statusMessage = "Failed to stage files: ${e.message}",
+                isError = true,
+            )
+            return null
+        }
+
         val diffResult = gitService.getStagedDiff(path)
         diffResult.onFailure { e ->
             _uiState.value = _uiState.value.copy(
@@ -372,40 +382,16 @@ class MainViewModel(
             return null
         }
 
-        var diff = diffResult.getOrThrow()
-
+        val diff = diffResult.getOrThrow()
         if (diff.isBlank()) {
-            _uiState.value = _uiState.value.copy(statusMessage = "No staged changes, running git add...", isError = false)
-            gitService.stageAll(path).onFailure { e ->
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    statusMessage = "Failed to stage files: ${e.message}",
-                    isError = true,
-                )
-                return null
-            }
-
-            val retryResult = gitService.getStagedDiff(path)
-            retryResult.onFailure { e ->
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    statusMessage = "Failed to load diff after staging: ${e.message}",
-                    isError = true,
-                )
-                return null
-            }
-
-            diff = retryResult.getOrThrow()
-            if (diff.isBlank()) {
-                _uiState.value = _uiState.value.copy(
-                    fileSummary = "",
-            fullDiff = "",
-                    isLoading = false,
-                    statusMessage = "No changes found in the repository.",
-                    isError = true,
-                )
-                return null
-            }
+            _uiState.value = _uiState.value.copy(
+                fileSummary = "",
+                fullDiff = "",
+                isLoading = false,
+                statusMessage = "No changes found in the repository.",
+                isError = true,
+            )
+            return null
         }
 
         return diff
