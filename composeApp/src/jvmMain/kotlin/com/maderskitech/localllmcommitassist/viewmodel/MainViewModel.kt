@@ -87,6 +87,31 @@ class MainViewModel(
         }
     }
 
+    fun switchBranch(branch: String) {
+        val path = _uiState.value.repoPath.trim()
+        if (path.isBlank() || branch == _uiState.value.currentBranch) return
+        viewModelScope.launch(Dispatchers.IO) {
+            gitService.checkoutBranch(path, branch)
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(
+                        currentBranch = branch,
+                        fileSummary = "",
+                        fullDiff = "",
+                        commitSummary = "",
+                        commitDescription = "",
+                        statusMessage = "Switched to branch '$branch'",
+                        isError = false,
+                    )
+                }
+                .onFailure { e ->
+                    _uiState.value = _uiState.value.copy(
+                        statusMessage = "Branch switch failed: ${e.message}",
+                        isError = true,
+                    )
+                }
+        }
+    }
+
     fun updatePrTargetBranch(branch: String) {
         settingsRepository.setPrTargetBranch(branch)
         _uiState.value = _uiState.value.copy(prTargetBranch = branch)
