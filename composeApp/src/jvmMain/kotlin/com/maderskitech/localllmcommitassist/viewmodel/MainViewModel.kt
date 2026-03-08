@@ -397,6 +397,14 @@ class MainViewModel(
         return diff
     }
 
+    fun openTerminal() {
+        val path = _uiState.value.repoPath.trim()
+        if (path.isBlank()) return
+        runCatching {
+            ProcessBuilder("open", "-a", "Terminal", path).start()
+        }
+    }
+
     fun commit(andPush: Boolean = false) {
         val state = _uiState.value
         if (state.commitSummary.isBlank()) {

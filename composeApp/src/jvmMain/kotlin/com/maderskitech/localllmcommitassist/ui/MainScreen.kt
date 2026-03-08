@@ -6,6 +6,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -124,37 +128,45 @@ fun MainScreen(
                         }
                     }
 
-                    Button(
-                        onClick = {
-                            val chooser = JFileChooser().apply {
-                                fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-                                dialogTitle = "Select Git Repository"
-                            }
-                            if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-                                viewModel.addProject(chooser.selectedFile.absolutePath)
-                            }
-                        },
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        ),
+                    TooltipBox(
+                        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                        tooltip = { PlainTooltip { Text("Add Project") } },
+                        state = rememberTooltipState(),
                     ) {
-                        Text("Add Project")
+                        IconButton(
+                            onClick = {
+                                val chooser = JFileChooser().apply {
+                                    fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+                                    dialogTitle = "Select Git Repository"
+                                }
+                                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                                    viewModel.addProject(chooser.selectedFile.absolutePath)
+                                }
+                            },
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = "Add Project", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                        }
                     }
 
                     if (state.repoPath.isNotBlank()) {
-                        OutlinedButton(
-                            onClick = { viewModel.removeProject(state.repoPath) },
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = MaterialTheme.colorScheme.error,
-                            ),
-                            border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
-                                brush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
-                            ),
+                        TooltipBox(
+                            positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                            tooltip = { PlainTooltip { Text("Open in Terminal") } },
+                            state = rememberTooltipState(),
                         ) {
-                            Text("Remove")
+                            IconButton(onClick = { viewModel.openTerminal() }) {
+                                Icon(Icons.Default.Terminal, contentDescription = "Open in Terminal", tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+
+                        TooltipBox(
+                            positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                            tooltip = { PlainTooltip { Text("Remove Project") } },
+                            state = rememberTooltipState(),
+                        ) {
+                            IconButton(onClick = { viewModel.removeProject(state.repoPath) }) {
+                                Icon(Icons.Default.Delete, contentDescription = "Remove Project", tint = MaterialTheme.colorScheme.error)
+                            }
                         }
                     }
 
