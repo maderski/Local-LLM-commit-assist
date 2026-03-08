@@ -9,6 +9,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -36,6 +37,7 @@ fun MainScreen(
     val state by viewModel.uiState.collectAsState()
     var dropdownExpanded by remember { mutableStateOf(false) }
     var branchDropdownExpanded by remember { mutableStateOf(false) }
+    var currentBranchDropdownExpanded by remember { mutableStateOf(false) }
     var pushAfterCommit by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableStateOf(0) }
     val scrollState = rememberScrollState()
@@ -174,20 +176,61 @@ fun MainScreen(
                 }
 
                 if (state.currentBranch.isNotBlank()) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Text(
-                            "⎇",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.tertiary,
-                        )
-                        Text(
-                            state.currentBranch,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.tertiary,
-                        )
+                    Box {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .clickable { currentBranchDropdownExpanded = true }
+                                .padding(horizontal = 4.dp, vertical = 2.dp),
+                        ) {
+                            Text(
+                                "⎇",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.tertiary,
+                            )
+                            Text(
+                                state.currentBranch,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.tertiary,
+                            )
+                            Icon(
+                                Icons.Default.ArrowDropDown,
+                                contentDescription = "Switch branch",
+                                tint = MaterialTheme.colorScheme.tertiary,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = currentBranchDropdownExpanded,
+                            onDismissRequest = { currentBranchDropdownExpanded = false },
+                        ) {
+                            if (state.availableBranches.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("No branches found") },
+                                    onClick = { currentBranchDropdownExpanded = false },
+                                    enabled = false,
+                                )
+                            } else {
+                                state.availableBranches.forEach { branch ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                branch,
+                                                fontWeight = if (branch == state.currentBranch)
+                                                    androidx.compose.ui.text.font.FontWeight.Bold
+                                                else null,
+                                            )
+                                        },
+                                        onClick = {
+                                            currentBranchDropdownExpanded = false
+                                            viewModel.switchBranch(branch)
+                                        },
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }

@@ -96,6 +96,21 @@ class GitService {
             .filter { it.isNotBlank() }
     }
 
+    fun checkoutBranch(repoPath: String, branch: String): Result<String> = runCatching {
+        val process = ProcessBuilder("git", "checkout", branch)
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git checkout failed (exit $exitCode): $output")
+        }
+        output
+    }
+
     fun stageAll(repoPath: String): Result<Unit> = runCatching {
         val process = ProcessBuilder("git", "add", "-A")
             .directory(File(repoPath))
