@@ -79,6 +79,10 @@ class MainViewModel(
         }
     }
 
+    fun refreshBranches() {
+        loadBranches(_uiState.value.repoPath)
+    }
+
     private fun loadBranches(path: String) {
         if (path.isBlank()) return
         viewModelScope.launch(Dispatchers.IO) {

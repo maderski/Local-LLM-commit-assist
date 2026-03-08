@@ -182,7 +182,10 @@ fun MainScreen(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier
                                 .clip(RoundedCornerShape(4.dp))
-                                .clickable { currentBranchDropdownExpanded = true }
+                                .clickable {
+                                    viewModel.refreshBranches()
+                                    currentBranchDropdownExpanded = true
+                                }
                                 .padding(horizontal = 4.dp, vertical = 2.dp),
                         ) {
                             Text(
