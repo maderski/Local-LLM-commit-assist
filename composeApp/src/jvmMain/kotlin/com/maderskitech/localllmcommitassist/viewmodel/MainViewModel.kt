@@ -50,6 +50,8 @@ class MainViewModel(
     )
     val uiState: StateFlow<MainUiState> = _uiState
 
+    private val stashedBranches = mutableSetOf<String>()
+
     init {
         loadCurrentBranch(_uiState.value.repoPath)
         loadBranches(_uiState.value.repoPath)
@@ -124,6 +126,19 @@ class MainViewModel(
         gitService.checkoutBranch(path, branch)
             .onSuccess {
                 val published = gitService.hasUpstreamBranch(path, branch).getOrDefault(false)
+                var statusMessage = "Switched to branch '$branch'"
+
+                if (branch in stashedBranches) {
+                    gitService.stashPop(path)
+                        .onSuccess {
+                            stashedBranches.remove(branch)
+                            statusMessage = "Switched to branch '$branch' — stashed changes restored"
+                        }
+                        .onFailure {
+                            statusMessage = "Switched to branch '$branch' — warning: failed to restore stashed changes: ${it.message}"
+                        }
+                }
+
                 _uiState.value = clearBranchDialogState().copy(
                     currentBranch = branch,
                     isCurrentBranchPublished = published,
@@ -131,7 +146,7 @@ class MainViewModel(
                     fullDiff = "",
                     commitSummary = "",
                     commitDescription = "",
-                    statusMessage = "Switched to branch '$branch'",
+                    statusMessage = statusMessage,
                     isError = false,
                 )
             }
@@ -184,6 +199,10 @@ class MainViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             gitService.stashChanges(path)
                 .onSuccess {
+                    val currentBranch = _uiState.value.currentBranch
+                    if (currentBranch.isNotBlank()) {
+                        stashedBranches.add(currentBranch)
+                    }
                     if (state.isPendingBranchCreate) {
                         performCreateBranch(path, branch)
                     } else {
