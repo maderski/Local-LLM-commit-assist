@@ -2,7 +2,7 @@
 
 A desktop app that connects to a local LLM (via its OpenAI-compatible API) to automatically generate git commit messages and pull request descriptions from your changes.
 
-<img width="453" height="471" alt="image" src="https://github.com/user-attachments/assets/e81a43c5-9eb5-491c-8749-2c55f3767552" />
+<img width="453" height="471" alt="image" src="https://github.com/user-attachments/assets/8e1070fc-c757-4f99-af3e-41b6c937a006" />
 
 ## Features
 
