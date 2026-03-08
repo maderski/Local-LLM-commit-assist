@@ -208,6 +208,78 @@ class GitService {
         null
     }
 
+    fun createBranch(repoPath: String, branchName: String): Result<String> = runCatching {
+        val process = ProcessBuilder("git", "checkout", "-b", branchName)
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git checkout -b failed (exit $exitCode): $output")
+        }
+        output
+    }
+
+    fun deleteBranch(repoPath: String, branchName: String): Result<String> = runCatching {
+        val process = ProcessBuilder("git", "branch", "-d", branchName)
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git branch -d failed (exit $exitCode): $output")
+        }
+        output
+    }
+
+    fun fetchBranch(repoPath: String): Result<String> = runCatching {
+        val process = ProcessBuilder("git", "fetch")
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git fetch failed (exit $exitCode): $output")
+        }
+        output
+    }
+
+    fun hasUpstreamBranch(repoPath: String, branchName: String): Result<Boolean> = runCatching {
+        val process = ProcessBuilder("git", "config", "--get", "branch.$branchName.remote")
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        exitCode == 0
+    }
+
+    fun publishBranch(repoPath: String, branchName: String): Result<String> = runCatching {
+        val process = ProcessBuilder("git", "push", "--set-upstream", "origin", branchName)
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git push --set-upstream failed (exit $exitCode): $output")
+        }
+        output
+    }
+
     fun push(repoPath: String): Result<String> = runCatching {
         val process = ProcessBuilder("git", "push")
             .directory(File(repoPath))
