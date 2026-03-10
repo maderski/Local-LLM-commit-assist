@@ -99,6 +99,40 @@ class SettingsRepository {
         prefs.put(KEY_PR_TARGET_BRANCH, branch)
     }
 
+    fun getAzureReviewers(): List<AzureReviewer> {
+        val raw = prefs.get(KEY_AZURE_REVIEWERS, "")
+        if (raw.isBlank()) return emptyList()
+        return raw.split(SEPARATOR).mapNotNull { line ->
+            val parts = line.split(REVIEWER_FIELD_SEPARATOR)
+            if (parts.size == 3) {
+                AzureReviewer(
+                    id = parts[0],
+                    name = parts[1],
+                    isRequired = parts[2].toBoolean(),
+                )
+            } else null
+        }
+    }
+
+    fun setAzureReviewers(reviewers: List<AzureReviewer>) {
+        val raw = reviewers.joinToString(SEPARATOR) { reviewer ->
+            "${reviewer.id}${REVIEWER_FIELD_SEPARATOR}${reviewer.name}${REVIEWER_FIELD_SEPARATOR}${reviewer.isRequired}"
+        }
+        prefs.put(KEY_AZURE_REVIEWERS, raw)
+    }
+
+    fun getAzureLinkWorkItems(): Boolean = prefs.getBoolean(KEY_AZURE_LINK_WORK_ITEMS, false)
+
+    fun setAzureLinkWorkItems(enabled: Boolean) {
+        prefs.putBoolean(KEY_AZURE_LINK_WORK_ITEMS, enabled)
+    }
+
+    fun getAzureAutoTag(): Boolean = prefs.getBoolean(KEY_AZURE_AUTO_TAG, false)
+
+    fun setAzureAutoTag(enabled: Boolean) {
+        prefs.putBoolean(KEY_AZURE_AUTO_TAG, enabled)
+    }
+
     companion object {
         private const val KEY_LLM_ADDRESS = "llm_address"
         private const val KEY_MODEL_NAME = "model_name"
@@ -110,10 +144,20 @@ class SettingsRepository {
         private const val KEY_AZURE_DEVOPS_TOKEN = "azure_devops_token"
         private const val KEY_ENCRYPTION_KEY = "encryption_key"
         private const val KEY_PR_TARGET_BRANCH = "pr_target_branch"
+        private const val KEY_AZURE_REVIEWERS = "azure_reviewers"
+        private const val KEY_AZURE_LINK_WORK_ITEMS = "azure_link_work_items"
+        private const val KEY_AZURE_AUTO_TAG = "azure_auto_tag"
         private const val DEFAULT_LLM_ADDRESS = "http://localhost:1234/v1"
         private const val DEFAULT_MODEL_NAME = ""
         private const val DEFAULT_PR_PLATFORM = "github"
         private const val DEFAULT_PR_TARGET_BRANCH = "main"
         private const val SEPARATOR = "\n"
+        private const val REVIEWER_FIELD_SEPARATOR = "|"
     }
 }
+
+data class AzureReviewer(
+    val id: String,
+    val name: String,
+    val isRequired: Boolean,
+)

@@ -2,13 +2,19 @@ package com.maderskitech.localllmcommitassist.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import com.maderskitech.localllmcommitassist.data.AzureReviewer
 import com.maderskitech.localllmcommitassist.data.LlmService
 import com.maderskitech.localllmcommitassist.data.SettingsRepository
 import kotlinx.coroutines.Dispatchers
@@ -35,9 +41,15 @@ fun SettingsScreen(
     var azureToken by remember { mutableStateOf(settingsRepository.getAzureDevOpsToken()) }
     var prSaved by remember { mutableStateOf(false) }
     var prDropdownExpanded by remember { mutableStateOf(false) }
+    var azureLinkWorkItems by remember { mutableStateOf(settingsRepository.getAzureLinkWorkItems()) }
+    var azureAutoTag by remember { mutableStateOf(settingsRepository.getAzureAutoTag()) }
+    var azureReviewers by remember { mutableStateOf(settingsRepository.getAzureReviewers()) }
+    var newReviewerName by remember { mutableStateOf("") }
+    var newReviewerUuid by remember { mutableStateOf("") }
+    var newReviewerRequired by remember { mutableStateOf(false) }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(20.dp),
+        modifier = Modifier.fillMaxSize().padding(20.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         // Header
@@ -273,6 +285,151 @@ fun SettingsScreen(
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.fillMaxWidth(),
                 )
+
+                if (prPlatform == "azure_devops") {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = azureLinkWorkItems,
+                            onCheckedChange = {
+                                azureLinkWorkItems = it
+                                settingsRepository.setAzureLinkWorkItems(it)
+                            },
+                        )
+                        Text(
+                            "Link work items from branch name",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = azureAutoTag,
+                            onCheckedChange = {
+                                azureAutoTag = it
+                                settingsRepository.setAzureAutoTag(it)
+                            },
+                        )
+                        Text(
+                            "Auto-tag PRs based on project name",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                    Text(
+                        "Reviewers",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
+                    azureReviewers.forEach { reviewer ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    reviewer.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    reviewer.id,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Text(
+                                if (reviewer.isRequired) "Required" else "Optional",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = if (reviewer.isRequired) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary,
+                            )
+                            IconButton(
+                                onClick = {
+                                    azureReviewers = azureReviewers.filter { it.id != reviewer.id }
+                                    settingsRepository.setAzureReviewers(azureReviewers)
+                                },
+                                modifier = Modifier.size(28.dp),
+                            ) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Remove reviewer",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = newReviewerName,
+                        onValueChange = { newReviewerName = it },
+                        label = { Text("Display Name") },
+                        placeholder = { Text("e.g. John Doe") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+
+                    OutlinedTextField(
+                        value = newReviewerUuid,
+                        onValueChange = { newReviewerUuid = it },
+                        label = { Text("UUID") },
+                        placeholder = { Text("e.g. 12345678-1234-1234-1234-123456789abc") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Checkbox(
+                            checked = newReviewerRequired,
+                            onCheckedChange = { newReviewerRequired = it },
+                        )
+                        Text("Required", style = MaterialTheme.typography.bodyMedium)
+
+                        Spacer(modifier = Modifier.weight(1f))
+
+                        FilledTonalButton(
+                            onClick = {
+                                if (newReviewerUuid.isNotBlank() && newReviewerName.isNotBlank()) {
+                                    azureReviewers = azureReviewers + AzureReviewer(
+                                        id = newReviewerUuid.trim(),
+                                        name = newReviewerName.trim(),
+                                        isRequired = newReviewerRequired,
+                                    )
+                                    settingsRepository.setAzureReviewers(azureReviewers)
+                                    newReviewerName = ""
+                                    newReviewerUuid = ""
+                                    newReviewerRequired = false
+                                }
+                            },
+                            enabled = newReviewerUuid.isNotBlank() && newReviewerName.isNotBlank(),
+                            shape = RoundedCornerShape(8.dp),
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Add Reviewer")
+                        }
+                    }
+                }
 
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),

@@ -461,6 +461,13 @@ class MainViewModel(
                     if (parsed == null) {
                         Result.failure(Exception("Could not parse Azure DevOps remote URL: $remoteUrl"))
                     } else {
+                        val reviewers = settingsRepository.getAzureReviewers()
+                        val workItemIds = if (settingsRepository.getAzureLinkWorkItems()) {
+                            prService.extractWorkItemIds(currentBranch)
+                        } else emptyList()
+                        val tags = if (settingsRepository.getAzureAutoTag()) {
+                            prService.inferTags(parsed.third)
+                        } else emptyList()
                         prService.createAzureDevOpsPr(
                             token = token,
                             username = username,
@@ -471,6 +478,9 @@ class MainViewModel(
                             description = state.prBody,
                             sourceBranch = currentBranch,
                             targetBranch = targetBranch,
+                            reviewers = reviewers,
+                            workItemIds = workItemIds,
+                            tags = tags,
                         )
                     }
                 }
