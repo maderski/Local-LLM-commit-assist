@@ -42,6 +42,7 @@ fun SettingsScreen(
     var prSaved by remember { mutableStateOf(false) }
     var prDropdownExpanded by remember { mutableStateOf(false) }
     var azureLinkWorkItems by remember { mutableStateOf(settingsRepository.getAzureLinkWorkItems()) }
+    var azureAutoTag by remember { mutableStateOf(settingsRepository.getAzureAutoTag()) }
     var azureReviewers by remember { mutableStateOf(settingsRepository.getAzureReviewers()) }
     var newReviewerName by remember { mutableStateOf("") }
     var newReviewerUuid by remember { mutableStateOf("") }
@@ -298,6 +299,22 @@ fun SettingsScreen(
                         )
                         Text(
                             "Link work items from branch name",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = azureAutoTag,
+                            onCheckedChange = {
+                                azureAutoTag = it
+                                settingsRepository.setAzureAutoTag(it)
+                            },
+                        )
+                        Text(
+                            "Auto-tag PRs based on project name",
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }

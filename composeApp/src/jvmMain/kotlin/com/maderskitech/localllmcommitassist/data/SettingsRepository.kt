@@ -127,6 +127,12 @@ class SettingsRepository {
         prefs.putBoolean(KEY_AZURE_LINK_WORK_ITEMS, enabled)
     }
 
+    fun getAzureAutoTag(): Boolean = prefs.getBoolean(KEY_AZURE_AUTO_TAG, false)
+
+    fun setAzureAutoTag(enabled: Boolean) {
+        prefs.putBoolean(KEY_AZURE_AUTO_TAG, enabled)
+    }
+
     companion object {
         private const val KEY_LLM_ADDRESS = "llm_address"
         private const val KEY_MODEL_NAME = "model_name"
@@ -140,6 +146,7 @@ class SettingsRepository {
         private const val KEY_PR_TARGET_BRANCH = "pr_target_branch"
         private const val KEY_AZURE_REVIEWERS = "azure_reviewers"
         private const val KEY_AZURE_LINK_WORK_ITEMS = "azure_link_work_items"
+        private const val KEY_AZURE_AUTO_TAG = "azure_auto_tag"
         private const val DEFAULT_LLM_ADDRESS = "http://localhost:1234/v1"
         private const val DEFAULT_MODEL_NAME = ""
         private const val DEFAULT_PR_PLATFORM = "github"

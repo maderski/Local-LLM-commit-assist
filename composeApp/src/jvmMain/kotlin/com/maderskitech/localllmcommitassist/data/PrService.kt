@@ -30,6 +30,7 @@ private data class AzureDevOpsPrRequest(
     val targetRefName: String,
     val reviewers: List<AzureDevOpsReviewer> = emptyList(),
     val workItemRefs: List<AzureDevOpsWorkItemRef> = emptyList(),
+    val labels: List<AzureDevOpsLabel> = emptyList(),
 )
 
 @Serializable
@@ -41,6 +42,11 @@ private data class AzureDevOpsReviewer(
 @Serializable
 private data class AzureDevOpsWorkItemRef(
     val id: String,
+)
+
+@Serializable
+private data class AzureDevOpsLabel(
+    val name: String,
 )
 
 class PrService {
@@ -126,6 +132,18 @@ class PrService {
             ?: error("No html_url in GitHub response: $responseBody")
     }
 
+    fun inferTags(repoName: String): List<String> {
+        val name = repoName.lowercase()
+        val tags = mutableListOf<String>()
+        if (name.contains("kmp") || name.contains("multiplatform")) tags.add("Kotlin Multiplatform")
+        if (name.contains("ios") || name.contains("swift")) tags.add("iOS")
+        if (name.contains("android")) tags.add("Android")
+        if (name.contains("shell") || name.contains("bash") || name.contains("script")) tags.add("Shell")
+        if (name.contains("web") || name.contains("react") || name.contains("angular") || name.contains("vue")) tags.add("Web")
+        if (name.contains("api") || name.contains("backend") || name.contains("server")) tags.add("Backend")
+        return tags
+    }
+
     fun extractWorkItemIds(branchName: String): List<String> {
         val regex = Regex("""(\d+)""")
         val match = regex.find(branchName)
@@ -144,6 +162,7 @@ class PrService {
         targetBranch: String,
         reviewers: List<AzureReviewer> = emptyList(),
         workItemIds: List<String> = emptyList(),
+        tags: List<String> = emptyList(),
     ): Result<String> = runCatching {
         val encodedToken = Base64.getEncoder().encodeToString("$username:$token".toByteArray())
         val url = "$orgUrl/$project/_apis/git/repositories/$repo/pullrequests?api-version=7.1"
@@ -159,6 +178,7 @@ class PrService {
                     targetRefName = "refs/heads/$targetBranch",
                     reviewers = reviewers.map { AzureDevOpsReviewer(id = it.id, isRequired = it.isRequired) },
                     workItemRefs = workItemIds.map { AzureDevOpsWorkItemRef(id = it) },
+                    labels = tags.map { AzureDevOpsLabel(name = it) },
                 )
             )
         }
