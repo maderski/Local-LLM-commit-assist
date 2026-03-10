@@ -121,6 +121,12 @@ class SettingsRepository {
         prefs.put(KEY_AZURE_REVIEWERS, raw)
     }
 
+    fun getAzureLinkWorkItems(): Boolean = prefs.getBoolean(KEY_AZURE_LINK_WORK_ITEMS, false)
+
+    fun setAzureLinkWorkItems(enabled: Boolean) {
+        prefs.putBoolean(KEY_AZURE_LINK_WORK_ITEMS, enabled)
+    }
+
     companion object {
         private const val KEY_LLM_ADDRESS = "llm_address"
         private const val KEY_MODEL_NAME = "model_name"
@@ -133,6 +139,7 @@ class SettingsRepository {
         private const val KEY_ENCRYPTION_KEY = "encryption_key"
         private const val KEY_PR_TARGET_BRANCH = "pr_target_branch"
         private const val KEY_AZURE_REVIEWERS = "azure_reviewers"
+        private const val KEY_AZURE_LINK_WORK_ITEMS = "azure_link_work_items"
         private const val DEFAULT_LLM_ADDRESS = "http://localhost:1234/v1"
         private const val DEFAULT_MODEL_NAME = ""
         private const val DEFAULT_PR_PLATFORM = "github"

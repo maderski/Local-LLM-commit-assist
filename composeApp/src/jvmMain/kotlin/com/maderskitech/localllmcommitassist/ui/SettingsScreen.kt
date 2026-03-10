@@ -41,6 +41,7 @@ fun SettingsScreen(
     var azureToken by remember { mutableStateOf(settingsRepository.getAzureDevOpsToken()) }
     var prSaved by remember { mutableStateOf(false) }
     var prDropdownExpanded by remember { mutableStateOf(false) }
+    var azureLinkWorkItems by remember { mutableStateOf(settingsRepository.getAzureLinkWorkItems()) }
     var azureReviewers by remember { mutableStateOf(settingsRepository.getAzureReviewers()) }
     var newReviewerName by remember { mutableStateOf("") }
     var newReviewerUuid by remember { mutableStateOf("") }
@@ -285,6 +286,22 @@ fun SettingsScreen(
                 )
 
                 if (prPlatform == "azure_devops") {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = azureLinkWorkItems,
+                            onCheckedChange = {
+                                azureLinkWorkItems = it
+                                settingsRepository.setAzureLinkWorkItems(it)
+                            },
+                        )
+                        Text(
+                            "Link work items from branch name",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
                     Text(

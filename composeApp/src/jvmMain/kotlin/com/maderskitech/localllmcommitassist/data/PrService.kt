@@ -29,12 +29,18 @@ private data class AzureDevOpsPrRequest(
     val sourceRefName: String,
     val targetRefName: String,
     val reviewers: List<AzureDevOpsReviewer> = emptyList(),
+    val workItemRefs: List<AzureDevOpsWorkItemRef> = emptyList(),
 )
 
 @Serializable
 private data class AzureDevOpsReviewer(
     val id: String,
     val isRequired: Boolean,
+)
+
+@Serializable
+private data class AzureDevOpsWorkItemRef(
+    val id: String,
 )
 
 class PrService {
@@ -120,6 +126,12 @@ class PrService {
             ?: error("No html_url in GitHub response: $responseBody")
     }
 
+    fun extractWorkItemIds(branchName: String): List<String> {
+        val regex = Regex("""(\d+)""")
+        val match = regex.find(branchName)
+        return listOfNotNull(match?.value)
+    }
+
     suspend fun createAzureDevOpsPr(
         token: String,
         username: String,
@@ -131,6 +143,7 @@ class PrService {
         sourceBranch: String,
         targetBranch: String,
         reviewers: List<AzureReviewer> = emptyList(),
+        workItemIds: List<String> = emptyList(),
     ): Result<String> = runCatching {
         val encodedToken = Base64.getEncoder().encodeToString("$username:$token".toByteArray())
         val url = "$orgUrl/$project/_apis/git/repositories/$repo/pullrequests?api-version=7.1"
@@ -145,6 +158,7 @@ class PrService {
                     sourceRefName = "refs/heads/$sourceBranch",
                     targetRefName = "refs/heads/$targetBranch",
                     reviewers = reviewers.map { AzureDevOpsReviewer(id = it.id, isRequired = it.isRequired) },
+                    workItemRefs = workItemIds.map { AzureDevOpsWorkItemRef(id = it) },
                 )
             )
         }
