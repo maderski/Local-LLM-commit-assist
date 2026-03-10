@@ -549,21 +549,48 @@ class MainViewModel(
         }
     }
 
-    fun deleteBranch(branchName: String) {
+    fun deleteCurrentBranch(deleteRemote: Boolean) {
         val path = _uiState.value.repoPath.trim()
+        val branchName = _uiState.value.currentBranch
         if (path.isBlank() || branchName.isBlank()) return
-        if (branchName == _uiState.value.currentBranch) {
-            _uiState.value = _uiState.value.copy(
-                statusMessage = "Cannot delete the current branch",
-                isError = true,
-            )
-            return
-        }
         viewModelScope.launch(Dispatchers.IO) {
+            val defaultBranch = gitService.getDefaultBranch(path).getOrElse { e ->
+                _uiState.value = _uiState.value.copy(
+                    statusMessage = "Failed to determine default branch: ${e.message}",
+                    isError = true,
+                )
+                return@launch
+            }
+            if (defaultBranch == branchName) {
+                _uiState.value = _uiState.value.copy(
+                    statusMessage = "Cannot delete the default branch",
+                    isError = true,
+                )
+                return@launch
+            }
+            gitService.checkoutBranch(path, defaultBranch).getOrElse { e ->
+                _uiState.value = _uiState.value.copy(
+                    statusMessage = "Failed to switch to '$defaultBranch': ${e.message}",
+                    isError = true,
+                )
+                return@launch
+            }
+            loadCurrentBranch(path)
             gitService.deleteBranch(path, branchName)
                 .onSuccess {
+                    if (deleteRemote) {
+                        gitService.deleteRemoteBranch(path, branchName)
+                            .onFailure { e ->
+                                _uiState.value = _uiState.value.copy(
+                                    statusMessage = "Deleted local branch '$branchName' but failed to delete remote: ${e.message}",
+                                    isError = true,
+                                )
+                                loadBranches(path)
+                                return@launch
+                            }
+                    }
                     _uiState.value = _uiState.value.copy(
-                        statusMessage = "Deleted branch '$branchName'",
+                        statusMessage = "Deleted branch '$branchName'${if (deleteRemote) " (local and remote)" else ""}",
                         isError = false,
                     )
                     loadBranches(path)

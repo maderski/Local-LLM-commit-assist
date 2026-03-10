@@ -96,6 +96,28 @@ class GitService {
             .filter { it.isNotBlank() }
     }
 
+    fun getDefaultBranch(repoPath: String): Result<String> = runCatching {
+        val process = ProcessBuilder("git", "symbolic-ref", "refs/remotes/origin/HEAD", "--short")
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText().trim()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            // Fallback: check if "main" or "master" exists locally
+            val branches = getLocalBranches(repoPath).getOrDefault(emptyList())
+            return@runCatching when {
+                "main" in branches -> "main"
+                "master" in branches -> "master"
+                else -> error("Could not determine default branch")
+            }
+        }
+        // Output is like "origin/main", strip the "origin/" prefix
+        output.removePrefix("origin/")
+    }
+
     fun checkoutBranch(repoPath: String, branch: String): Result<String> = runCatching {
         val process = ProcessBuilder("git", "checkout", branch)
             .directory(File(repoPath))
@@ -234,6 +256,21 @@ class GitService {
 
         if (exitCode != 0) {
             error("git branch -d failed (exit $exitCode): $output")
+        }
+        output
+    }
+
+    fun deleteRemoteBranch(repoPath: String, branchName: String): Result<String> = runCatching {
+        val process = ProcessBuilder("git", "push", "origin", "--delete", branchName)
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git push origin --delete failed (exit $exitCode): $output")
         }
         output
     }

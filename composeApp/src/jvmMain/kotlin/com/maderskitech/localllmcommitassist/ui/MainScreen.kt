@@ -694,48 +694,22 @@ fun MainScreen(
 
         // Delete Branch dialog
         if (showDeleteBranchDialog) {
-            var deleteBranchDropdownExpanded by remember { mutableStateOf(false) }
-            var selectedDeleteBranch by remember { mutableStateOf("") }
-            val deletableBranches = state.availableBranches.filter { it != state.currentBranch }
+            var deleteFromRemote by remember { mutableStateOf(false) }
 
             AlertDialog(
                 onDismissRequest = { showDeleteBranchDialog = false },
                 title = { Text("Delete Branch") },
                 text = {
-                    ExposedDropdownMenuBox(
-                        expanded = deleteBranchDropdownExpanded,
-                        onExpandedChange = { deleteBranchDropdownExpanded = it },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        OutlinedTextField(
-                            value = selectedDeleteBranch,
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("Select branch to delete") },
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = deleteBranchDropdownExpanded) },
-                            singleLine = true,
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
-                        )
-                        ExposedDropdownMenu(
-                            expanded = deleteBranchDropdownExpanded,
-                            onDismissRequest = { deleteBranchDropdownExpanded = false },
-                        ) {
-                            if (deletableBranches.isEmpty()) {
-                                DropdownMenuItem(
-                                    text = { Text("No branches to delete") },
-                                    onClick = { deleteBranchDropdownExpanded = false },
-                                    enabled = false,
+                    Column {
+                        Text("Are you sure you want to delete '${state.currentBranch}'?")
+                        if (state.isCurrentBranchPublished) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = deleteFromRemote,
+                                    onCheckedChange = { deleteFromRemote = it },
                                 )
-                            }
-                            deletableBranches.forEach { branch ->
-                                DropdownMenuItem(
-                                    text = { Text(branch) },
-                                    onClick = {
-                                        selectedDeleteBranch = branch
-                                        deleteBranchDropdownExpanded = false
-                                    },
-                                )
+                                Text("Also delete from remote")
                             }
                         }
                     }
@@ -744,9 +718,8 @@ fun MainScreen(
                     Button(
                         onClick = {
                             showDeleteBranchDialog = false
-                            viewModel.deleteBranch(selectedDeleteBranch)
+                            viewModel.deleteCurrentBranch(deleteFromRemote)
                         },
-                        enabled = selectedDeleteBranch.isNotBlank(),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.error,
                             contentColor = MaterialTheme.colorScheme.onError,
