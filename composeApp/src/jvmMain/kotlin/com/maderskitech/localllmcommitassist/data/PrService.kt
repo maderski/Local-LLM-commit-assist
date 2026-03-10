@@ -28,6 +28,13 @@ private data class AzureDevOpsPrRequest(
     val description: String,
     val sourceRefName: String,
     val targetRefName: String,
+    val reviewers: List<AzureDevOpsReviewer> = emptyList(),
+)
+
+@Serializable
+private data class AzureDevOpsReviewer(
+    val id: String,
+    val isRequired: Boolean,
 )
 
 class PrService {
@@ -123,6 +130,7 @@ class PrService {
         description: String,
         sourceBranch: String,
         targetBranch: String,
+        reviewers: List<AzureReviewer> = emptyList(),
     ): Result<String> = runCatching {
         val encodedToken = Base64.getEncoder().encodeToString("$username:$token".toByteArray())
         val url = "$orgUrl/$project/_apis/git/repositories/$repo/pullrequests?api-version=7.1"
@@ -136,6 +144,7 @@ class PrService {
                     description = description,
                     sourceRefName = "refs/heads/$sourceBranch",
                     targetRefName = "refs/heads/$targetBranch",
+                    reviewers = reviewers.map { AzureDevOpsReviewer(id = it.id, isRequired = it.isRequired) },
                 )
             )
         }
