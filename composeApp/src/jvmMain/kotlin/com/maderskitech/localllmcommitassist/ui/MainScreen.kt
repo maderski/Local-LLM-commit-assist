@@ -10,6 +10,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -38,6 +40,9 @@ fun MainScreen(
     var dropdownExpanded by remember { mutableStateOf(false) }
     var branchDropdownExpanded by remember { mutableStateOf(false) }
     var currentBranchDropdownExpanded by remember { mutableStateOf(false) }
+    var showAddBranchDialog by remember { mutableStateOf(false) }
+    var addBranchName by remember { mutableStateOf("") }
+    var showDeleteBranchDialog by remember { mutableStateOf(false) }
     var pushAfterCommit by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableStateOf(0) }
     val scrollState = rememberScrollState()
@@ -176,59 +181,124 @@ fun MainScreen(
                 }
 
                 if (state.currentBranch.isNotBlank()) {
-                    Box {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .clickable { currentBranchDropdownExpanded = true }
-                                .padding(horizontal = 4.dp, vertical = 2.dp),
-                        ) {
-                            Text(
-                                "⎇",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.tertiary,
-                            )
-                            Text(
-                                state.currentBranch,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.tertiary,
-                            )
-                            Icon(
-                                Icons.Default.ArrowDropDown,
-                                contentDescription = "Switch branch",
-                                tint = MaterialTheme.colorScheme.tertiary,
-                                modifier = Modifier.size(16.dp),
-                            )
-                        }
-                        DropdownMenu(
-                            expanded = currentBranchDropdownExpanded,
-                            onDismissRequest = { currentBranchDropdownExpanded = false },
-                        ) {
-                            if (state.availableBranches.isEmpty()) {
-                                DropdownMenuItem(
-                                    text = { Text("No branches found") },
-                                    onClick = { currentBranchDropdownExpanded = false },
-                                    enabled = false,
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Box {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .clickable {
+                                        viewModel.refreshBranches()
+                                        currentBranchDropdownExpanded = true
+                                    }
+                                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                            ) {
+                                Text(
+                                    "⎇",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.tertiary,
                                 )
-                            } else {
-                                state.availableBranches.forEach { branch ->
+                                Text(
+                                    state.currentBranch,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                )
+                                Icon(
+                                    Icons.Default.ArrowDropDown,
+                                    contentDescription = "Switch branch",
+                                    tint = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = currentBranchDropdownExpanded,
+                                onDismissRequest = { currentBranchDropdownExpanded = false },
+                            ) {
+                                if (state.availableBranches.isEmpty()) {
                                     DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                branch,
-                                                fontWeight = if (branch == state.currentBranch)
-                                                    androidx.compose.ui.text.font.FontWeight.Bold
-                                                else null,
-                                            )
-                                        },
-                                        onClick = {
-                                            currentBranchDropdownExpanded = false
-                                            viewModel.switchBranch(branch)
-                                        },
+                                        text = { Text("No branches found") },
+                                        onClick = { currentBranchDropdownExpanded = false },
+                                        enabled = false,
                                     )
+                                } else {
+                                    state.availableBranches.forEach { branch ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    branch,
+                                                    fontWeight = if (branch == state.currentBranch)
+                                                        androidx.compose.ui.text.font.FontWeight.Bold
+                                                    else null,
+                                                )
+                                            },
+                                            onClick = {
+                                                currentBranchDropdownExpanded = false
+                                                viewModel.switchBranch(branch)
+                                            },
+                                        )
+                                    }
                                 }
+                            }
+                        }
+
+                        TooltipBox(
+                            positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                            tooltip = { PlainTooltip { Text("Add Branch") } },
+                            state = rememberTooltipState(),
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    addBranchName = ""
+                                    showAddBranchDialog = true
+                                },
+                                modifier = Modifier.size(28.dp),
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = "Add Branch", tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(18.dp))
+                            }
+                        }
+
+                        TooltipBox(
+                            positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                            tooltip = {
+                                PlainTooltip {
+                                    Text(if (state.isCurrentBranchPublished) "Fetch" else "Publish Branch")
+                                }
+                            },
+                            state = rememberTooltipState(),
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    if (state.isCurrentBranchPublished) {
+                                        viewModel.fetchBranch()
+                                    } else {
+                                        viewModel.publishBranch()
+                                    }
+                                },
+                                modifier = Modifier.size(28.dp),
+                            ) {
+                                Icon(
+                                    if (state.isCurrentBranchPublished) Icons.Default.CloudDownload else Icons.Default.CloudUpload,
+                                    contentDescription = if (state.isCurrentBranchPublished) "Fetch" else "Publish Branch",
+                                    tint = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+
+                        TooltipBox(
+                            positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                            tooltip = { PlainTooltip { Text("Delete Branch") } },
+                            state = rememberTooltipState(),
+                        ) {
+                            IconButton(
+                                onClick = { showDeleteBranchDialog = true },
+                                modifier = Modifier.size(28.dp),
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = "Delete Branch", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
                             }
                         }
                     }
@@ -588,6 +658,105 @@ fun MainScreen(
                 trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             )
         }
+        // Add Branch dialog
+        if (showAddBranchDialog) {
+            AlertDialog(
+                onDismissRequest = { showAddBranchDialog = false },
+                title = { Text("New Branch") },
+                text = {
+                    OutlinedTextField(
+                        value = addBranchName,
+                        onValueChange = { addBranchName = it },
+                        label = { Text("Branch name") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showAddBranchDialog = false
+                            viewModel.createBranch(addBranchName.trim())
+                        },
+                        enabled = addBranchName.isNotBlank(),
+                    ) {
+                        Text("Create")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAddBranchDialog = false }) {
+                        Text("Cancel")
+                    }
+                },
+            )
+        }
+
+        // Delete Branch dialog
+        if (showDeleteBranchDialog) {
+            var deleteFromRemote by remember { mutableStateOf(false) }
+
+            AlertDialog(
+                onDismissRequest = { showDeleteBranchDialog = false },
+                title = { Text("Delete Branch") },
+                text = {
+                    Column {
+                        Text("Are you sure you want to delete '${state.currentBranch}'?")
+                        if (state.isCurrentBranchPublished) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = deleteFromRemote,
+                                    onCheckedChange = { deleteFromRemote = it },
+                                )
+                                Text("Also delete from remote")
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showDeleteBranchDialog = false
+                            viewModel.deleteCurrentBranch(deleteFromRemote)
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError,
+                        ),
+                    ) {
+                        Text("Delete")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteBranchDialog = false }) {
+                        Text("Cancel")
+                    }
+                },
+            )
+        }
+
+        // Branch switch with uncommitted changes dialog
+        if (state.showBranchSwitchDialog) {
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissBranchSwitchDialog() },
+                title = { Text("Uncommitted Changes") },
+                text = { Text("You have uncommitted changes. What would you like to do?") },
+                confirmButton = {
+                    Button(
+                        onClick = { viewModel.onBranchSwitchBringChanges() },
+                    ) {
+                        Text("Bring Changes")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.onBranchSwitchLeaveChanges() }) {
+                        Text("Leave Changes")
+                    }
+                },
+            )
+        }
+
         if (state.statusMessage.isNotBlank()) {
             val bgColor = if (state.isError)
                 MaterialTheme.colorScheme.errorContainer

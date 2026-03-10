@@ -96,6 +96,28 @@ class GitService {
             .filter { it.isNotBlank() }
     }
 
+    fun getDefaultBranch(repoPath: String): Result<String> = runCatching {
+        val process = ProcessBuilder("git", "symbolic-ref", "refs/remotes/origin/HEAD", "--short")
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText().trim()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            // Fallback: check if "main" or "master" exists locally
+            val branches = getLocalBranches(repoPath).getOrDefault(emptyList())
+            return@runCatching when {
+                "main" in branches -> "main"
+                "master" in branches -> "master"
+                else -> error("Could not determine default branch")
+            }
+        }
+        // Output is like "origin/main", strip the "origin/" prefix
+        output.removePrefix("origin/")
+    }
+
     fun checkoutBranch(repoPath: String, branch: String): Result<String> = runCatching {
         val process = ProcessBuilder("git", "checkout", branch)
             .directory(File(repoPath))
@@ -206,6 +228,138 @@ class GitService {
             }
         }
         null
+    }
+
+    fun createBranch(repoPath: String, branchName: String): Result<String> = runCatching {
+        val process = ProcessBuilder("git", "checkout", "-b", branchName)
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git checkout -b failed (exit $exitCode): $output")
+        }
+        output
+    }
+
+    fun deleteBranch(repoPath: String, branchName: String): Result<String> = runCatching {
+        val process = ProcessBuilder("git", "branch", "-D", branchName)
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git branch -d failed (exit $exitCode): $output")
+        }
+        output
+    }
+
+    fun deleteRemoteBranch(repoPath: String, branchName: String): Result<String> = runCatching {
+        val process = ProcessBuilder("git", "push", "origin", "--delete", branchName)
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git push origin --delete failed (exit $exitCode): $output")
+        }
+        output
+    }
+
+    fun fetchBranch(repoPath: String): Result<String> = runCatching {
+        val process = ProcessBuilder("git", "fetch")
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git fetch failed (exit $exitCode): $output")
+        }
+        output
+    }
+
+    fun hasUpstreamBranch(repoPath: String, branchName: String): Result<Boolean> = runCatching {
+        val process = ProcessBuilder("git", "config", "--get", "branch.$branchName.remote")
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        exitCode == 0
+    }
+
+    fun publishBranch(repoPath: String, branchName: String): Result<String> = runCatching {
+        val process = ProcessBuilder("git", "push", "--set-upstream", "origin", branchName)
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git push --set-upstream failed (exit $exitCode): $output")
+        }
+        output
+    }
+
+    fun hasUncommittedChanges(repoPath: String): Result<Boolean> = runCatching {
+        val process = ProcessBuilder("git", "status", "--porcelain")
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git status --porcelain failed (exit $exitCode): $output")
+        }
+        output.isNotBlank()
+    }
+
+    fun stashPop(repoPath: String): Result<String> = runCatching {
+        val process = ProcessBuilder("git", "stash", "pop")
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git stash pop failed (exit $exitCode): $output")
+        }
+        output
+    }
+
+    fun stashChanges(repoPath: String): Result<String> = runCatching {
+        val process = ProcessBuilder("git", "stash")
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git stash failed (exit $exitCode): $output")
+        }
+        output
     }
 
     fun push(repoPath: String): Result<String> = runCatching {
