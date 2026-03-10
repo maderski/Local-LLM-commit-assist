@@ -246,7 +246,7 @@ class GitService {
     }
 
     fun deleteBranch(repoPath: String, branchName: String): Result<String> = runCatching {
-        val process = ProcessBuilder("git", "branch", "-d", branchName)
+        val process = ProcessBuilder("git", "branch", "-D", branchName)
             .directory(File(repoPath))
             .redirectErrorStream(true)
             .start()
