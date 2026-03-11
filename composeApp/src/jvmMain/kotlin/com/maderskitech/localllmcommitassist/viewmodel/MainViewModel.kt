@@ -2,10 +2,13 @@ package com.maderskitech.localllmcommitassist.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.maderskitech.localllmcommitassist.data.AttachmentConfig
 import com.maderskitech.localllmcommitassist.data.GitService
 import com.maderskitech.localllmcommitassist.data.LlmService
+import com.maderskitech.localllmcommitassist.data.PrAttachment
 import com.maderskitech.localllmcommitassist.data.PrService
 import com.maderskitech.localllmcommitassist.data.SettingsRepository
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,6 +35,9 @@ data class MainUiState(
     val showBranchSwitchDialog: Boolean = false,
     val pendingSwitchBranch: String = "",
     val isPendingBranchCreate: Boolean = false,
+    val prAttachments: List<PrAttachment> = emptyList(),
+    val showFileSizeErrorDialog: Boolean = false,
+    val fileSizeErrorMessage: String = "",
 )
 
 class MainViewModel(
@@ -72,6 +78,7 @@ class MainViewModel(
             prTitle = "",
             prBody = "",
             prUrl = "",
+            prAttachments = emptyList(),
         )
         loadCurrentBranch(path)
         loadBranches(path)
@@ -248,6 +255,7 @@ class MainViewModel(
             prTitle = "",
             prBody = "",
             prUrl = "",
+            prAttachments = emptyList(),
         )
         loadCurrentBranch(path)
         loadBranches(path)
@@ -272,6 +280,7 @@ class MainViewModel(
             prTitle = "",
             prBody = "",
             prUrl = "",
+            prAttachments = emptyList(),
         )
         loadCurrentBranch(newSelected)
         loadBranches(newSelected)
@@ -405,6 +414,40 @@ class MainViewModel(
         }
     }
 
+    fun addAttachments(files: List<File>) {
+        val platform = settingsRepository.getPrPlatform()
+        val maxSize = AttachmentConfig.maxSizeForPlatform(platform)
+        val maxLabel = AttachmentConfig.maxSizeLabelForPlatform(platform)
+        val existingPaths = _uiState.value.prAttachments.map { it.file.absolutePath }.toSet()
+
+        for (file in files) {
+            if (file.extension.lowercase() !in AttachmentConfig.allowedExtensions) continue
+            if (file.absolutePath in existingPaths) continue
+            if (file.length() > maxSize) {
+                val sizeMb = "%.1f".format(file.length().toDouble() / (1024 * 1024))
+                _uiState.value = _uiState.value.copy(
+                    showFileSizeErrorDialog = true,
+                    fileSizeErrorMessage = "'${file.name}' ($sizeMb MB) exceeds the $maxLabel limit for ${if (platform == "azure_devops") "Azure DevOps" else "GitHub"}.",
+                )
+                return
+            }
+            val attachment = PrAttachment(file = file)
+            _uiState.value = _uiState.value.copy(
+                prAttachments = _uiState.value.prAttachments + attachment,
+            )
+        }
+    }
+
+    fun removeAttachment(id: String) {
+        _uiState.value = _uiState.value.copy(
+            prAttachments = _uiState.value.prAttachments.filter { it.id != id },
+        )
+    }
+
+    fun dismissFileSizeErrorDialog() {
+        _uiState.value = _uiState.value.copy(showFileSizeErrorDialog = false, fileSizeErrorMessage = "")
+    }
+
     fun createPullRequest() {
         val state = _uiState.value
         val path = state.repoPath.trim()
@@ -436,6 +479,69 @@ class MainViewModel(
 
             val remoteUrl = remoteUrlResult.getOrThrow()
 
+            // Upload attachments and build augmented PR body
+            val attachments = _uiState.value.prAttachments
+            val markdownReferences = mutableListOf<String>()
+            if (attachments.isNotEmpty()) {
+                for ((index, attachment) in attachments.withIndex()) {
+                    _uiState.value = _uiState.value.copy(
+                        statusMessage = "Uploading attachment ${index + 1} of ${attachments.size}...",
+                    )
+                    val uploadResult = when (platform) {
+                        "github" -> {
+                            val token = settingsRepository.getGitHubToken()
+                            val parsed = prService.parseGitHubRemote(remoteUrl)
+                            if (parsed == null) {
+                                Result.failure(Exception("Could not parse GitHub remote URL"))
+                            } else {
+                                prService.uploadFileToGitHubRepo(
+                                    token = token,
+                                    owner = parsed.first,
+                                    repo = parsed.second,
+                                    branch = currentBranch,
+                                    attachment = attachment,
+                                )
+                            }
+                        }
+                        "azure_devops" -> {
+                            val token = settingsRepository.getAzureDevOpsToken()
+                            val username = settingsRepository.getAzureDevOpsUsername()
+                            val parsed = prService.parseAzureDevOpsRemote(remoteUrl)
+                            if (parsed == null) {
+                                Result.failure(Exception("Could not parse Azure DevOps remote URL"))
+                            } else {
+                                prService.uploadAzureDevOpsAttachment(
+                                    token = token,
+                                    username = username,
+                                    orgUrl = parsed.first,
+                                    project = parsed.second,
+                                    attachment = attachment,
+                                )
+                            }
+                        }
+                        else -> Result.failure(Exception("Unknown platform: $platform"))
+                    }
+                    uploadResult.onFailure { e ->
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            statusMessage = "Failed to upload '${attachment.name}': ${e.message}",
+                            isError = true,
+                        )
+                        return@launch
+                    }
+                    val downloadUrl = uploadResult.getOrThrow()
+                    markdownReferences.add(prService.buildMarkdownReference(attachment, downloadUrl))
+                }
+            }
+
+            val augmentedBody = if (markdownReferences.isNotEmpty()) {
+                state.prBody + "\n\n" + markdownReferences.joinToString("\n")
+            } else {
+                state.prBody
+            }
+
+            _uiState.value = _uiState.value.copy(statusMessage = "Creating pull request...", isError = false)
+
             val prResult: Result<String> = when (platform) {
                 "github" -> {
                     val token = settingsRepository.getGitHubToken()
@@ -448,7 +554,7 @@ class MainViewModel(
                             owner = parsed.first,
                             repo = parsed.second,
                             title = state.prTitle,
-                            body = state.prBody,
+                            body = augmentedBody,
                             head = currentBranch,
                             base = targetBranch,
                         )
@@ -475,7 +581,7 @@ class MainViewModel(
                             project = parsed.second,
                             repo = parsed.third,
                             title = state.prTitle,
-                            description = state.prBody,
+                            description = augmentedBody,
                             sourceBranch = currentBranch,
                             targetBranch = targetBranch,
                             reviewers = reviewers,
@@ -494,6 +600,7 @@ class MainViewModel(
                         isLoading = false,
                         statusMessage = "Pull request created successfully!",
                         isError = false,
+                        prAttachments = emptyList(),
                     )
                 }
                 .onFailure { e ->

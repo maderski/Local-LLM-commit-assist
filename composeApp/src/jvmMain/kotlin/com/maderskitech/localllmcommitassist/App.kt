@@ -12,11 +12,12 @@ import com.maderskitech.localllmcommitassist.ui.AppTheme
 import com.maderskitech.localllmcommitassist.ui.MainScreen
 import com.maderskitech.localllmcommitassist.ui.SettingsScreen
 import com.maderskitech.localllmcommitassist.viewmodel.MainViewModel
+import java.awt.Window
 
 enum class Screen { Main, Settings }
 
 @Composable
-fun App() {
+fun App(window: Window) {
     val settingsRepository = remember { SettingsRepository() }
     var currentScreen by remember { mutableStateOf(Screen.Main) }
     val mainViewModel: MainViewModel = viewModel { MainViewModel(settingsRepository) }
@@ -30,6 +31,7 @@ fun App() {
                 Screen.Main -> MainScreen(
                     viewModel = mainViewModel,
                     onNavigateToSettings = { currentScreen = Screen.Settings },
+                    window = window,
                 )
                 Screen.Settings -> SettingsScreen(
                     settingsRepository = settingsRepository,

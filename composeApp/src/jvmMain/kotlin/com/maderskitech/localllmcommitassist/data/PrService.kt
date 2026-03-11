@@ -13,6 +13,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.util.Base64
+import java.util.UUID
 
 @Serializable
 private data class GitHubPrRequest(
@@ -192,5 +193,71 @@ class PrService {
             ?.get("href")?.jsonPrimitive?.content
             ?: parsed["remoteUrl"]?.jsonPrimitive?.content
             ?: error("No URL in Azure DevOps response: $responseBody")
+    }
+
+    suspend fun uploadFileToGitHubRepo(
+        token: String,
+        owner: String,
+        repo: String,
+        branch: String,
+        attachment: PrAttachment,
+    ): Result<String> = runCatching {
+        val fileBytes = attachment.file.readBytes()
+        val base64Content = Base64.getEncoder().encodeToString(fileBytes)
+        val filePath = ".github/pr-assets/${UUID.randomUUID()}-${attachment.name}"
+
+        val response = client.put("https://api.github.com/repos/$owner/$repo/contents/$filePath") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            header(HttpHeaders.Accept, "application/vnd.github+json")
+            header("X-GitHub-Api-Version", "2022-11-28")
+            contentType(ContentType.Application.Json)
+            setBody(
+                mapOf(
+                    "message" to "Add PR attachment: ${attachment.name}",
+                    "content" to base64Content,
+                    "branch" to branch,
+                )
+            )
+        }
+        val responseBody = response.bodyAsText()
+        if (!response.status.isSuccess()) {
+            error("GitHub upload error ${response.status.value}: $responseBody")
+        }
+        val parsed = json.parseToJsonElement(responseBody).jsonObject
+        parsed["content"]?.jsonObject?.get("download_url")?.jsonPrimitive?.content
+            ?: error("No download_url in GitHub upload response: $responseBody")
+    }
+
+    suspend fun uploadAzureDevOpsAttachment(
+        token: String,
+        username: String,
+        orgUrl: String,
+        project: String,
+        attachment: PrAttachment,
+    ): Result<String> = runCatching {
+        val encodedToken = Base64.getEncoder().encodeToString("$username:$token".toByteArray())
+        val fileBytes = attachment.file.readBytes()
+        val url = "$orgUrl/$project/_apis/wit/attachments?fileName=${attachment.name}&api-version=7.1"
+
+        val response = client.post(url) {
+            header(HttpHeaders.Authorization, "Basic $encodedToken")
+            contentType(ContentType.Application.OctetStream)
+            setBody(fileBytes)
+        }
+        val responseBody = response.bodyAsText()
+        if (!response.status.isSuccess()) {
+            error("Azure DevOps upload error ${response.status.value}: $responseBody")
+        }
+        val parsed = json.parseToJsonElement(responseBody).jsonObject
+        parsed["url"]?.jsonPrimitive?.content
+            ?: error("No url in Azure DevOps upload response: $responseBody")
+    }
+
+    fun buildMarkdownReference(attachment: PrAttachment, url: String): String {
+        return if (attachment.isVideo) {
+            "[![${attachment.name}]($url)]($url)"
+        } else {
+            "![${attachment.name}]($url)"
+        }
     }
 }

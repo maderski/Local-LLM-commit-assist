@@ -1,6 +1,8 @@
 package com.maderskitech.localllmcommitassist.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -8,6 +10,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CloudDownload
@@ -22,19 +26,29 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.maderskitech.localllmcommitassist.data.AttachmentConfig
 import com.maderskitech.localllmcommitassist.viewmodel.MainViewModel
 import java.awt.Desktop
 import java.awt.Toolkit
+import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
+import java.awt.dnd.DnDConstants
+import java.awt.dnd.DropTarget
+import java.awt.dnd.DropTargetAdapter
+import java.awt.dnd.DropTargetDragEvent
+import java.awt.dnd.DropTargetDropEvent
+import java.awt.dnd.DropTargetEvent
 import java.io.File
 import java.net.URI
 import javax.swing.JFileChooser
+import javax.swing.filechooser.FileNameExtensionFilter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
     viewModel: MainViewModel,
     onNavigateToSettings: () -> Unit,
+    window: java.awt.Window,
 ) {
     val state by viewModel.uiState.collectAsState()
     var dropdownExpanded by remember { mutableStateOf(false) }
@@ -45,7 +59,43 @@ fun MainScreen(
     var showDeleteBranchDialog by remember { mutableStateOf(false) }
     var pushAfterCommit by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableStateOf(0) }
+    var isDragHovering by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
+
+    // Drag-and-drop support for PR attachments
+    DisposableEffect(window, selectedTab) {
+        if (selectedTab == 1) {
+            val dropTarget = DropTarget(window, DnDConstants.ACTION_COPY, object : DropTargetAdapter() {
+                override fun dragEnter(dtde: DropTargetDragEvent) {
+                    isDragHovering = true
+                    dtde.acceptDrag(DnDConstants.ACTION_COPY)
+                }
+                override fun dragExit(dte: DropTargetEvent) {
+                    isDragHovering = false
+                }
+                override fun drop(dtde: DropTargetDropEvent) {
+                    isDragHovering = false
+                    dtde.acceptDrop(DnDConstants.ACTION_COPY)
+                    val transferable = dtde.transferable
+                    if (transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+                        @Suppress("UNCHECKED_CAST")
+                        val files = transferable.getTransferData(DataFlavor.javaFileListFlavor) as List<File>
+                        viewModel.addAttachments(files)
+                    }
+                    dtde.dropComplete(true)
+                }
+            })
+            window.dropTarget = dropTarget
+            onDispose {
+                window.dropTarget = null
+                isDragHovering = false
+            }
+        } else {
+            window.dropTarget = null
+            isDragHovering = false
+            onDispose { }
+        }
+    }
 
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(scrollState).padding(20.dp),
@@ -571,19 +621,100 @@ fun MainScreen(
                                 modifier = Modifier.fillMaxWidth(),
                             )
 
-                            OutlinedTextField(
-                                value = state.prBody,
-                                onValueChange = { viewModel.updatePrBody(it) },
-                                label = { Text("PR Description") },
-                                minLines = 3,
-                                maxLines = 6,
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                                ),
-                                shape = RoundedCornerShape(8.dp),
+                            // PR Description with drop zone indicator
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
-                            )
+                            ) {
+                                Box(
+                                    modifier = Modifier.weight(1f).then(
+                                        if (isDragHovering) Modifier
+                                            .border(
+                                                BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
+                                                RoundedCornerShape(8.dp),
+                                            )
+                                            .background(
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
+                                                RoundedCornerShape(8.dp),
+                                            )
+                                        else Modifier
+                                    ),
+                                ) {
+                                    OutlinedTextField(
+                                        value = state.prBody,
+                                        onValueChange = { viewModel.updatePrBody(it) },
+                                        label = { Text("PR Description") },
+                                        minLines = 3,
+                                        maxLines = 6,
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                                        ),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
+
+                                // Attach Files button
+                                TooltipBox(
+                                    positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                                    tooltip = { PlainTooltip { Text("Attach Files") } },
+                                    state = rememberTooltipState(),
+                                ) {
+                                    IconButton(
+                                        onClick = {
+                                            val chooser = JFileChooser().apply {
+                                                fileSelectionMode = JFileChooser.FILES_ONLY
+                                                isMultiSelectionEnabled = true
+                                                dialogTitle = "Select Images or Videos"
+                                                fileFilter = FileNameExtensionFilter(
+                                                    "Images & Videos",
+                                                    *AttachmentConfig.allowedExtensions.toTypedArray(),
+                                                )
+                                            }
+                                            if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                                                viewModel.addAttachments(chooser.selectedFiles.toList())
+                                            }
+                                        },
+                                    ) {
+                                        Icon(
+                                            Icons.Default.AttachFile,
+                                            contentDescription = "Attach Files",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Attachment chips
+                            if (state.prAttachments.isNotEmpty()) {
+                                @OptIn(ExperimentalLayoutApi::class)
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    state.prAttachments.forEach { attachment ->
+                                        val sizeMb = "%.1f".format(attachment.sizeBytes.toDouble() / (1024 * 1024))
+                                        InputChip(
+                                            selected = false,
+                                            onClick = {},
+                                            label = { Text("${attachment.name} ($sizeMb MB)", style = MaterialTheme.typography.bodySmall) },
+                                            trailingIcon = {
+                                                IconButton(
+                                                    onClick = { viewModel.removeAttachment(attachment.id) },
+                                                    modifier = Modifier.size(18.dp),
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.Close,
+                                                        contentDescription = "Remove ${attachment.name}",
+                                                        modifier = Modifier.size(14.dp),
+                                                    )
+                                                }
+                                            },
+                                        )
+                                    }
+                                }
+                            }
 
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -752,6 +883,20 @@ fun MainScreen(
                 dismissButton = {
                     TextButton(onClick = { viewModel.onBranchSwitchLeaveChanges() }) {
                         Text("Leave Changes")
+                    }
+                },
+            )
+        }
+
+        // File size error dialog
+        if (state.showFileSizeErrorDialog) {
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissFileSizeErrorDialog() },
+                title = { Text("File Too Large") },
+                text = { Text(state.fileSizeErrorMessage) },
+                confirmButton = {
+                    Button(onClick = { viewModel.dismissFileSizeErrorDialog() }) {
+                        Text("OK")
                     }
                 },
             )

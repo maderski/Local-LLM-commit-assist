@@ -15,6 +15,6 @@ fun main() = application {
         icon = icon,
         state = WindowState(size = DpSize(900.dp, 1000.dp)),
     ) {
-        App()
+        App(window)
     }
 }
