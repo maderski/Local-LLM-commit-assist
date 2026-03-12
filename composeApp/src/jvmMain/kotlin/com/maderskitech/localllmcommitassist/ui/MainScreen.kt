@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -912,16 +913,37 @@ fun MainScreen(
             else
                 MaterialTheme.colorScheme.onPrimaryContainer
 
-            Text(
-                text = state.statusMessage,
-                color = textColor,
-                style = MaterialTheme.typography.bodyMedium,
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
                     .background(bgColor)
                     .padding(12.dp),
-            )
+                verticalAlignment = Alignment.Top,
+            ) {
+                Text(
+                    text = state.statusMessage,
+                    color = textColor,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                if (state.isError) {
+                    IconButton(
+                        onClick = {
+                            val clipboard = Toolkit.getDefaultToolkit().systemClipboard
+                            clipboard.setContents(StringSelection(state.statusMessage), null)
+                        },
+                        modifier = Modifier.size(24.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "Copy error to clipboard",
+                            tint = textColor,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                }
+            }
         }
     }
 }
