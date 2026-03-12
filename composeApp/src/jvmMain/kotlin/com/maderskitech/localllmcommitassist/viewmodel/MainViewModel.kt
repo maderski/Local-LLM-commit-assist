@@ -82,6 +82,7 @@ class MainViewModel(
         )
         loadCurrentBranch(path)
         loadBranches(path)
+        loadDefaultBranchAsPrTarget(path)
     }
 
     private fun loadCurrentBranch(path: String) {
@@ -104,6 +105,15 @@ class MainViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             val branches = gitService.getLocalBranches(path).getOrDefault(emptyList())
             _uiState.value = _uiState.value.copy(availableBranches = branches)
+        }
+    }
+
+    private fun loadDefaultBranchAsPrTarget(path: String) {
+        if (path.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val defaultBranch = gitService.getDefaultBranch(path).getOrNull() ?: return@launch
+            settingsRepository.setPrTargetBranch(defaultBranch)
+            _uiState.value = _uiState.value.copy(prTargetBranch = defaultBranch)
         }
     }
 
@@ -259,6 +269,7 @@ class MainViewModel(
         )
         loadCurrentBranch(path)
         loadBranches(path)
+        loadDefaultBranchAsPrTarget(path)
     }
 
     fun removeProject(path: String) {
@@ -284,6 +295,7 @@ class MainViewModel(
         )
         loadCurrentBranch(newSelected)
         loadBranches(newSelected)
+        loadDefaultBranchAsPrTarget(newSelected)
     }
 
     fun updateCommitSummary(summary: String) {

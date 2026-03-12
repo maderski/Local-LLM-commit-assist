@@ -188,10 +188,15 @@ class PrService {
             error("Azure DevOps API error ${response.status.value}: $responseBody")
         }
         val parsed = json.parseToJsonElement(responseBody).jsonObject
+        val pullRequestId = parsed["pullRequestId"]?.jsonPrimitive?.content
         parsed["_links"]?.jsonObject
             ?.get("web")?.jsonObject
             ?.get("href")?.jsonPrimitive?.content
             ?: parsed["remoteUrl"]?.jsonPrimitive?.content
+            ?: parsed["repository"]?.jsonObject
+                ?.get("webUrl")?.jsonPrimitive?.content
+                ?.let { repoWebUrl -> pullRequestId?.let { "$repoWebUrl/pullrequest/$it" } }
+            ?: pullRequestId?.let { "$orgUrl/$project/_git/$repo/pullrequest/$it" }
             ?: error("No URL in Azure DevOps response: $responseBody")
     }
 
