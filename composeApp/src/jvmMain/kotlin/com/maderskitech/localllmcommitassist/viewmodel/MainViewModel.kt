@@ -100,6 +100,12 @@ class MainViewModel(
         loadBranches(_uiState.value.repoPath)
     }
 
+    fun refreshAll() {
+        val path = _uiState.value.repoPath
+        loadCurrentBranch(path)
+        loadBranches(path)
+    }
+
     private fun loadBranches(path: String) {
         if (path.isBlank()) return
         viewModelScope.launch(Dispatchers.IO) {
