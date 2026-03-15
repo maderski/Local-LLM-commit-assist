@@ -14,12 +14,19 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
+data class SelectableFile(
+    val path: String,
+    val status: String,
+    val isSelected: Boolean = true,
+)
+
 data class MainUiState(
     val savedProjects: List<String> = emptyList(),
     val repoPath: String = "",
     val currentBranch: String = "",
     val availableBranches: List<String> = emptyList(),
     val prTargetBranch: String = "",
+    val changedFiles: List<SelectableFile> = emptyList(),
     val fileSummary: String = "",
     val fullDiff: String = "",
     val commitSummary: String = "",
@@ -61,6 +68,7 @@ class MainViewModel(
     init {
         loadCurrentBranch(_uiState.value.repoPath)
         loadBranches(_uiState.value.repoPath)
+        loadChangedFiles()
     }
 
     fun selectProject(path: String) {
@@ -69,6 +77,7 @@ class MainViewModel(
             repoPath = path,
             currentBranch = "",
             availableBranches = emptyList(),
+            changedFiles = emptyList(),
             fileSummary = "",
             fullDiff = "",
             commitSummary = "",
@@ -83,6 +92,7 @@ class MainViewModel(
         loadCurrentBranch(path)
         loadBranches(path)
         loadDefaultBranchAsPrTarget(path)
+        loadChangedFiles()
     }
 
     private fun loadCurrentBranch(path: String) {
@@ -159,6 +169,7 @@ class MainViewModel(
                 _uiState.value = clearBranchDialogState().copy(
                     currentBranch = branch,
                     isCurrentBranchPublished = published,
+                    changedFiles = emptyList(),
                     fileSummary = "",
                     fullDiff = "",
                     commitSummary = "",
@@ -166,6 +177,7 @@ class MainViewModel(
                     statusMessage = statusMessage,
                     isError = false,
                 )
+                loadChangedFiles()
             }
             .onFailure { e ->
                 _uiState.value = clearBranchDialogState().copy(
@@ -256,6 +268,7 @@ class MainViewModel(
             repoPath = path,
             currentBranch = "",
             availableBranches = emptyList(),
+            changedFiles = emptyList(),
             fileSummary = "",
             fullDiff = "",
             commitSummary = "",
@@ -270,6 +283,7 @@ class MainViewModel(
         loadCurrentBranch(path)
         loadBranches(path)
         loadDefaultBranchAsPrTarget(path)
+        loadChangedFiles()
     }
 
     fun removeProject(path: String) {
@@ -282,6 +296,7 @@ class MainViewModel(
             repoPath = newSelected,
             currentBranch = "",
             availableBranches = emptyList(),
+            changedFiles = emptyList(),
             fileSummary = "",
             fullDiff = "",
             commitSummary = "",
@@ -296,6 +311,7 @@ class MainViewModel(
         loadCurrentBranch(newSelected)
         loadBranches(newSelected)
         loadDefaultBranchAsPrTarget(newSelected)
+        loadChangedFiles()
     }
 
     fun updateCommitSummary(summary: String) {
@@ -304,6 +320,48 @@ class MainViewModel(
 
     fun updateCommitDescription(description: String) {
         _uiState.value = _uiState.value.copy(commitDescription = description)
+    }
+
+    fun loadChangedFiles() {
+        val path = _uiState.value.repoPath.trim()
+        if (path.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            gitService.getChangedFiles(path)
+                .onSuccess { files ->
+                    val currentSelected = _uiState.value.changedFiles
+                        .filter { it.isSelected }
+                        .map { it.path }
+                        .toSet()
+                    val selectableFiles = files.map { (filePath, status) ->
+                        SelectableFile(
+                            path = filePath,
+                            status = status,
+                            isSelected = if (currentSelected.isEmpty()) true else filePath in currentSelected,
+                        )
+                    }
+                    _uiState.value = _uiState.value.copy(changedFiles = selectableFiles)
+                }
+        }
+    }
+
+    fun toggleFileSelection(path: String) {
+        _uiState.value = _uiState.value.copy(
+            changedFiles = _uiState.value.changedFiles.map {
+                if (it.path == path) it.copy(isSelected = !it.isSelected) else it
+            },
+        )
+    }
+
+    fun selectAllFiles() {
+        _uiState.value = _uiState.value.copy(
+            changedFiles = _uiState.value.changedFiles.map { it.copy(isSelected = true) },
+        )
+    }
+
+    fun unselectAllFiles() {
+        _uiState.value = _uiState.value.copy(
+            changedFiles = _uiState.value.changedFiles.map { it.copy(isSelected = false) },
+        )
     }
 
     fun updatePrTitle(title: String) {
@@ -321,13 +379,20 @@ class MainViewModel(
             return
         }
 
+        val selectedFiles = _uiState.value.changedFiles.filter { it.isSelected }
+        if (selectedFiles.isEmpty()) {
+            _uiState.value = _uiState.value.copy(statusMessage = "No files selected", isError = true)
+            return
+        }
+
         val address = settingsRepository.getLlmAddress()
         val model = settingsRepository.getModelName()
 
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.value = _uiState.value.copy(isLoading = true, statusMessage = "Loading diff...", isError = false)
 
-            val diff = loadDiff(path)
+            val selectedPaths = selectedFiles.map { it.path }
+            val diff = loadDiffForFiles(path, selectedPaths)
             if (diff == null) return@launch
 
             val summary = gitService.getNewFiles(path).getOrDefault(emptyList())
@@ -625,9 +690,11 @@ class MainViewModel(
         }
     }
 
-    private fun loadDiff(path: String): String? {
-        _uiState.value = _uiState.value.copy(statusMessage = "Staging all changes...", isError = false)
-        gitService.stageAll(path).onFailure { e ->
+    private fun loadDiffForFiles(path: String, files: List<String>): String? {
+        _uiState.value = _uiState.value.copy(statusMessage = "Staging selected files...", isError = false)
+
+        gitService.unstageAll(path)
+        gitService.stageFiles(path, files).onFailure { e ->
             _uiState.value = _uiState.value.copy(
                 isLoading = false,
                 statusMessage = "Failed to stage files: ${e.message}",
@@ -652,7 +719,7 @@ class MainViewModel(
                 fileSummary = "",
                 fullDiff = "",
                 isLoading = false,
-                statusMessage = "No changes found in the repository.",
+                statusMessage = "No changes found for selected files.",
                 isError = true,
             )
             return null
@@ -793,9 +860,27 @@ class MainViewModel(
             return
         }
 
+        val selectedFiles = state.changedFiles.filter { it.isSelected }
+        if (selectedFiles.isEmpty()) {
+            _uiState.value = state.copy(statusMessage = "No files selected to commit", isError = true)
+            return
+        }
+
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.value = _uiState.value.copy(isLoading = true, statusMessage = "", isError = false)
-            gitService.commit(state.repoPath.trim(), state.commitSummary, state.commitDescription)
+
+            val path = state.repoPath.trim()
+            gitService.unstageAll(path)
+            gitService.stageFiles(path, selectedFiles.map { it.path }).onFailure { e ->
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    statusMessage = "Failed to stage files: ${e.message}",
+                    isError = true,
+                )
+                return@launch
+            }
+
+            gitService.commit(path, state.commitSummary, state.commitDescription)
                 .onSuccess { commitOutput ->
                     if (andPush) {
                         _uiState.value = _uiState.value.copy(statusMessage = "Pushing...", isError = false)
@@ -803,6 +888,7 @@ class MainViewModel(
                             .onSuccess { pushOutput ->
                                 _uiState.value = _uiState.value.copy(
                                     isLoading = false,
+                                    changedFiles = emptyList(),
                                     fileSummary = "",
                                     fullDiff = "",
                                     commitSummary = "",
@@ -810,10 +896,12 @@ class MainViewModel(
                                     statusMessage = "Committed and pushed successfully!\n$commitOutput\n$pushOutput",
                                     isError = false,
                                 )
+                                loadChangedFiles()
                             }
                             .onFailure { e ->
                                 _uiState.value = _uiState.value.copy(
                                     isLoading = false,
+                                    changedFiles = emptyList(),
                                     fileSummary = "",
                                     fullDiff = "",
                                     commitSummary = "",
@@ -821,10 +909,12 @@ class MainViewModel(
                                     statusMessage = "Committed but push failed: ${e.message}",
                                     isError = true,
                                 )
+                                loadChangedFiles()
                             }
                     } else {
                         _uiState.value = _uiState.value.copy(
                             isLoading = false,
+                            changedFiles = emptyList(),
                             fileSummary = "",
                             fullDiff = "",
                             commitSummary = "",
@@ -832,6 +922,7 @@ class MainViewModel(
                             statusMessage = "Committed successfully!\n$commitOutput",
                             isError = false,
                         )
+                        loadChangedFiles()
                     }
                 }
                 .onFailure { e ->

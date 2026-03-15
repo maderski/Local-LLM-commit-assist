@@ -23,6 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -379,47 +380,140 @@ fun MainScreen(
         when (selectedTab) {
             0 -> {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    // Staged changes summary
+                    // Changed files selection
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                         shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth().height(180.dp),
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
                         Column(
-                            modifier = Modifier.fillMaxSize().padding(16.dp),
+                            modifier = Modifier.fillMaxWidth().padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Text(
-                                "Staged Changes",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                            OutlinedTextField(
-                                value = state.fileSummary,
-                                onValueChange = {},
-                                readOnly = true,
-                                placeholder = { Text("Changed files will appear here...") },
-                                textStyle = LocalTextStyle.current.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 13.sp,
-                                    lineHeight = 18.sp,
-                                ),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                                ),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxSize(),
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "Changed Files",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    FilledTonalButton(
+                                        onClick = { viewModel.loadChangedFiles() },
+                                        enabled = !state.isLoading && state.repoPath.isNotBlank(),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                        colors = ButtonDefaults.filledTonalButtonColors(
+                                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        ),
+                                    ) {
+                                        Text("Refresh", style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
+                            }
+
+                            if (state.changedFiles.isEmpty()) {
+                                Text(
+                                    "No changed files detected. Click Refresh to scan.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                )
+                            } else {
+                                // Select All / Unselect All row
+                                val allSelected = state.changedFiles.all { it.isSelected }
+                                val noneSelected = state.changedFiles.none { it.isSelected }
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    TriStateCheckbox(
+                                        state = when {
+                                            allSelected -> ToggleableState.On
+                                            noneSelected -> ToggleableState.Off
+                                            else -> ToggleableState.Indeterminate
+                                        },
+                                        onClick = {
+                                            if (allSelected) viewModel.unselectAllFiles() else viewModel.selectAllFiles()
+                                        },
+                                        colors = CheckboxDefaults.colors(
+                                            checkedColor = MaterialTheme.colorScheme.primary,
+                                            uncheckedColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        ),
+                                    )
+                                    Text(
+                                        if (allSelected) "Unselect All" else "Select All",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Spacer(Modifier.weight(1f))
+                                    Text(
+                                        "${state.changedFiles.count { it.isSelected }}/${state.changedFiles.size} selected",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                                // File list
+                                val fileListScrollState = rememberScrollState()
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 200.dp)
+                                        .verticalScroll(fileListScrollState),
+                                ) {
+                                    state.changedFiles.forEach { file ->
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable { viewModel.toggleFileSelection(file.path) }
+                                                .padding(vertical = 2.dp),
+                                        ) {
+                                            Checkbox(
+                                                checked = file.isSelected,
+                                                onCheckedChange = { viewModel.toggleFileSelection(file.path) },
+                                                colors = CheckboxDefaults.colors(
+                                                    checkedColor = MaterialTheme.colorScheme.primary,
+                                                    uncheckedColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                ),
+                                            )
+                                            Text(
+                                                file.path,
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    fontFamily = FontFamily.Monospace,
+                                                    fontSize = 13.sp,
+                                                ),
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier.weight(1f),
+                                            )
+                                            Text(
+                                                file.status,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = when (file.status) {
+                                                    "added", "untracked" -> MaterialTheme.colorScheme.tertiary
+                                                    "deleted" -> MaterialTheme.colorScheme.error
+                                                    "modified" -> MaterialTheme.colorScheme.primary
+                                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                                },
+                                                modifier = Modifier.padding(end = 4.dp),
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
 
                     // Generate button — primary CTA
                     Button(
                         onClick = { viewModel.generateCommitMessage() },
-                        enabled = !state.isLoading && state.repoPath.isNotBlank(),
+                        enabled = !state.isLoading && state.repoPath.isNotBlank() && state.changedFiles.any { it.isSelected },
                         modifier = Modifier.fillMaxWidth().height(48.dp),
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(
