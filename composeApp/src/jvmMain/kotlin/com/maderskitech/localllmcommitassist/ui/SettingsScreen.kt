@@ -1,5 +1,6 @@
 package com.maderskitech.localllmcommitassist.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -133,7 +134,7 @@ fun SettingsScreen(
                         Text("Save")
                     }
 
-                    FilledTonalButton(
+                    OutlinedButton(
                         onClick = {
                             testing = true
                             testResult = null
@@ -152,9 +153,9 @@ fun SettingsScreen(
                         },
                         enabled = !testing && llmAddress.isNotBlank(),
                         shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.primary,
                         ),
                     ) {
                         Text("Test Connection")
