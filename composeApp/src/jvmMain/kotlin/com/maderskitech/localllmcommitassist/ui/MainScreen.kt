@@ -379,12 +379,15 @@ fun MainScreen(
         // Tab content
         when (selectedTab) {
             0 -> {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    // Changed files selection
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    // Left side — Changed files selection
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                         shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.weight(1f),
                     ) {
                         Column(
                             modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -400,18 +403,16 @@ fun MainScreen(
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.primary,
                                 )
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    FilledTonalButton(
-                                        onClick = { viewModel.loadChangedFiles() },
-                                        enabled = !state.isLoading && state.repoPath.isNotBlank(),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                        colors = ButtonDefaults.filledTonalButtonColors(
-                                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        ),
-                                    ) {
-                                        Text("Refresh", style = MaterialTheme.typography.labelSmall)
-                                    }
+                                FilledTonalButton(
+                                    onClick = { viewModel.loadChangedFiles() },
+                                    enabled = !state.isLoading && state.repoPath.isNotBlank(),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    ),
+                                ) {
+                                    Text("Refresh", style = MaterialTheme.typography.labelSmall)
                                 }
                             }
 
@@ -449,13 +450,12 @@ fun MainScreen(
                                         style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
-                                    Spacer(Modifier.weight(1f))
-                                    Text(
-                                        "${state.changedFiles.count { it.isSelected }}/${state.changedFiles.size} selected",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
                                 }
+                                Text(
+                                    "${state.changedFiles.count { it.isSelected }}/${state.changedFiles.size} selected",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
 
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
@@ -464,7 +464,7 @@ fun MainScreen(
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .heightIn(max = 200.dp)
+                                        .heightIn(max = 400.dp)
                                         .verticalScroll(fileListScrollState),
                                 ) {
                                     state.changedFiles.forEach { file ->
@@ -483,26 +483,26 @@ fun MainScreen(
                                                     uncheckedColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 ),
                                             )
-                                            Text(
-                                                file.path,
-                                                style = MaterialTheme.typography.bodySmall.copy(
-                                                    fontFamily = FontFamily.Monospace,
-                                                    fontSize = 13.sp,
-                                                ),
-                                                color = MaterialTheme.colorScheme.onSurface,
-                                                modifier = Modifier.weight(1f),
-                                            )
-                                            Text(
-                                                file.status,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = when (file.status) {
-                                                    "added", "untracked" -> MaterialTheme.colorScheme.tertiary
-                                                    "deleted" -> MaterialTheme.colorScheme.error
-                                                    "modified" -> MaterialTheme.colorScheme.primary
-                                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                                },
-                                                modifier = Modifier.padding(end = 4.dp),
-                                            )
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    file.path,
+                                                    style = MaterialTheme.typography.bodySmall.copy(
+                                                        fontFamily = FontFamily.Monospace,
+                                                        fontSize = 12.sp,
+                                                    ),
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                )
+                                                Text(
+                                                    file.status,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = when (file.status) {
+                                                        "added", "untracked" -> MaterialTheme.colorScheme.tertiary
+                                                        "deleted" -> MaterialTheme.colorScheme.error
+                                                        "modified" -> MaterialTheme.colorScheme.primary
+                                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                                    },
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -510,117 +510,123 @@ fun MainScreen(
                         }
                     }
 
-                    // Generate button — primary CTA
-                    Button(
-                        onClick = { viewModel.generateCommitMessage() },
-                        enabled = !state.isLoading && state.repoPath.isNotBlank() && state.changedFiles.any { it.isSelected },
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                            disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                        ),
+                    // Right side — Generate + Commit message
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.weight(1f),
                     ) {
-                        Text("Generate Commit Message", style = MaterialTheme.typography.labelLarge)
-                    }
-
-                    // Commit message card
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        shape = RoundedCornerShape(12.dp),
-                    ) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth().padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        // Generate button — primary CTA
+                        Button(
+                            onClick = { viewModel.generateCommitMessage() },
+                            enabled = !state.isLoading && state.repoPath.isNotBlank() && state.changedFiles.any { it.isSelected },
+                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            ),
                         ) {
-                            Text(
-                                "Commit Message",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
+                            Text("Generate Commit Message", style = MaterialTheme.typography.labelLarge)
+                        }
 
-                            OutlinedTextField(
-                                value = state.commitSummary,
-                                onValueChange = { viewModel.updateCommitSummary(it) },
-                                label = { Text("Summary") },
-                                singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                                ),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-
-                            OutlinedTextField(
-                                value = state.commitDescription,
-                                onValueChange = { viewModel.updateCommitDescription(it) },
-                                label = { Text("Description") },
-                                minLines = 3,
-                                maxLines = 6,
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                                ),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-
-                            // Action buttons
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.clip(RoundedCornerShape(0.dp)),
+                        // Commit message card
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            shape = RoundedCornerShape(12.dp),
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
-                                Button(
-                                    onClick = { viewModel.commit(andPush = pushAfterCommit) },
-                                    enabled = !state.isLoading && state.commitSummary.isNotBlank(),
-                                    shape = RoundedCornerShape(8.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.tertiary,
-                                        contentColor = MaterialTheme.colorScheme.onTertiary,
+                                Text(
+                                    "Commit Message",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+
+                                OutlinedTextField(
+                                    value = state.commitSummary,
+                                    onValueChange = { viewModel.updateCommitSummary(it) },
+                                    label = { Text("Summary") },
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
                                     ),
-                                ) {
-                                    Text(if (pushAfterCommit) "Commit & Push" else "Commit")
-                                }
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+
+                                OutlinedTextField(
+                                    value = state.commitDescription,
+                                    onValueChange = { viewModel.updateCommitDescription(it) },
+                                    label = { Text("Description") },
+                                    minLines = 3,
+                                    maxLines = 6,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+
+                                // Action buttons
                                 Row(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(start = 4.dp),
+                                    modifier = Modifier.clip(RoundedCornerShape(0.dp)),
                                 ) {
-                                    Checkbox(
-                                        checked = pushAfterCommit,
-                                        onCheckedChange = { pushAfterCommit = it },
-                                        colors = CheckboxDefaults.colors(
-                                            checkedColor = MaterialTheme.colorScheme.tertiary,
-                                            uncheckedColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    Button(
+                                        onClick = { viewModel.commit(andPush = pushAfterCommit) },
+                                        enabled = !state.isLoading && state.commitSummary.isNotBlank(),
+                                        shape = RoundedCornerShape(8.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.tertiary,
+                                            contentColor = MaterialTheme.colorScheme.onTertiary,
                                         ),
-                                    )
-                                    Text(
-                                        "Push",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                                FilledTonalButton(
-                                    onClick = {
-                                        val text = if (state.commitDescription.isBlank()) {
-                                            state.commitSummary
-                                        } else {
-                                            "${state.commitSummary}\n\n${state.commitDescription}"
-                                        }
-                                        val clipboard = Toolkit.getDefaultToolkit().systemClipboard
-                                        clipboard.setContents(StringSelection(text), null)
-                                    },
-                                    enabled = state.commitSummary.isNotBlank(),
-                                    shape = RoundedCornerShape(8.dp),
-                                    colors = ButtonDefaults.filledTonalButtonColors(
-                                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    ),
-                                ) {
-                                    Text("Copy to Clipboard")
+                                    ) {
+                                        Text(if (pushAfterCommit) "Commit & Push" else "Commit")
+                                    }
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(start = 4.dp),
+                                    ) {
+                                        Checkbox(
+                                            checked = pushAfterCommit,
+                                            onCheckedChange = { pushAfterCommit = it },
+                                            colors = CheckboxDefaults.colors(
+                                                checkedColor = MaterialTheme.colorScheme.tertiary,
+                                                uncheckedColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            ),
+                                        )
+                                        Text(
+                                            "Push",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    FilledTonalButton(
+                                        onClick = {
+                                            val text = if (state.commitDescription.isBlank()) {
+                                                state.commitSummary
+                                            } else {
+                                                "${state.commitSummary}\n\n${state.commitDescription}"
+                                            }
+                                            val clipboard = Toolkit.getDefaultToolkit().systemClipboard
+                                            clipboard.setContents(StringSelection(text), null)
+                                        },
+                                        enabled = state.commitSummary.isNotBlank(),
+                                        shape = RoundedCornerShape(8.dp),
+                                        colors = ButtonDefaults.filledTonalButtonColors(
+                                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        ),
+                                    ) {
+                                        Text("Copy to Clipboard")
+                                    }
                                 }
                             }
                         }

@@ -48,6 +48,16 @@ kotlin {
 }
 
 
+// Workaround for IntelliJ injecting a broken coroutine debug init script
+// See: https://youtrack.jetbrains.com/issue/KTIJ-29068
+gradle.taskGraph.whenReady {
+    allTasks.filterIsInstance<JavaExec>().forEach { task ->
+        task.jvmArgumentProviders.removeAll {
+            it.javaClass.name.contains("KotlinCoroutineJvmDebugArgumentsProvider")
+        }
+    }
+}
+
 compose.desktop {
     application {
         mainClass = "com.maderskitech.localllmcommitassist.MainKt"
