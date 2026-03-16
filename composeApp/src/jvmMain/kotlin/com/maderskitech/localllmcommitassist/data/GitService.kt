@@ -147,6 +147,64 @@ class GitService {
         }
     }
 
+    fun stageFiles(repoPath: String, files: List<String>): Result<Unit> = runCatching {
+        if (files.isEmpty()) return@runCatching
+        val command = listOf("git", "add", "--") + files
+        val process = ProcessBuilder(command)
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git add failed (exit $exitCode): $output")
+        }
+    }
+
+    fun unstageAll(repoPath: String): Result<Unit> = runCatching {
+        val process = ProcessBuilder("git", "reset", "HEAD")
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        process.waitFor()
+        // git reset HEAD may return non-zero on empty repos, ignore
+    }
+
+    fun getChangedFiles(repoPath: String): Result<List<Pair<String, String>>> = runCatching {
+        val process = ProcessBuilder("git", "status", "--porcelain")
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git status --porcelain failed (exit $exitCode): $output")
+        }
+
+        output.lines()
+            .filter { it.isNotBlank() }
+            .map { line ->
+                val statusCode = line.substring(0, 2).trim()
+                val filePath = line.substring(3)
+                val status = when {
+                    statusCode == "??" -> "untracked"
+                    statusCode.contains("A") -> "added"
+                    statusCode.contains("D") -> "deleted"
+                    statusCode.contains("M") -> "modified"
+                    statusCode.contains("R") -> "renamed"
+                    statusCode.contains("C") -> "copied"
+                    else -> statusCode
+                }
+                Pair(filePath, status)
+            }
+    }
+
     fun commit(repoPath: String, summary: String, description: String): Result<String> = runCatching {
         val message = if (description.isBlank()) summary else "$summary\n\n$description"
 
