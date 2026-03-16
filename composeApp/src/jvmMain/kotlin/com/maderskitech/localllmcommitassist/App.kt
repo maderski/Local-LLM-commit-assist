@@ -13,6 +13,8 @@ import com.maderskitech.localllmcommitassist.ui.MainScreen
 import com.maderskitech.localllmcommitassist.ui.SettingsScreen
 import com.maderskitech.localllmcommitassist.viewmodel.MainViewModel
 import java.awt.Window
+import java.awt.event.WindowEvent
+import java.awt.event.WindowFocusListener
 
 enum class Screen { Main, Settings }
 
@@ -21,6 +23,15 @@ fun App(window: Window) {
     val settingsRepository = remember { SettingsRepository() }
     var currentScreen by remember { mutableStateOf(Screen.Main) }
     val mainViewModel: MainViewModel = viewModel { MainViewModel(settingsRepository) }
+
+    DisposableEffect(window) {
+        val listener = object : WindowFocusListener {
+            override fun windowGainedFocus(e: WindowEvent) = mainViewModel.refreshAll()
+            override fun windowLostFocus(e: WindowEvent) = Unit
+        }
+        window.addWindowFocusListener(listener)
+        onDispose { window.removeWindowFocusListener(listener) }
+    }
 
     AppTheme {
         Surface(

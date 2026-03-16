@@ -989,6 +989,25 @@ fun MainScreen(
             )
         }
 
+        // Publish branch dialog
+        if (state.showPublishBranchDialog) {
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissPublishBranchDialog() },
+                title = { Text("Publish Branch?") },
+                text = { Text("The branch \"${state.currentBranch}\" has not been published to the remote yet. Would you like to publish it and push your changes?") },
+                confirmButton = {
+                    Button(onClick = { viewModel.confirmPublishAndPush() }) {
+                        Text("Publish & Push")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.dismissPublishBranchDialog() }) {
+                        Text("Cancel")
+                    }
+                },
+            )
+        }
+
         if (state.statusMessage.isNotBlank()) {
             val bgColor = if (state.isError)
                 MaterialTheme.colorScheme.errorContainer

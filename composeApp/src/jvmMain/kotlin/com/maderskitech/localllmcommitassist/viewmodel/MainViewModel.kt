@@ -45,6 +45,7 @@ data class MainUiState(
     val prAttachments: List<PrAttachment> = emptyList(),
     val showFileSizeErrorDialog: Boolean = false,
     val fileSizeErrorMessage: String = "",
+    val showPublishBranchDialog: Boolean = false,
 )
 
 class MainViewModel(
@@ -108,6 +109,12 @@ class MainViewModel(
 
     fun refreshBranches() {
         loadBranches(_uiState.value.repoPath)
+    }
+
+    fun refreshAll() {
+        val path = _uiState.value.repoPath
+        loadCurrentBranch(path)
+        loadBranches(path)
     }
 
     private fun loadBranches(path: String) {
@@ -525,6 +532,33 @@ class MainViewModel(
         _uiState.value = _uiState.value.copy(showFileSizeErrorDialog = false, fileSizeErrorMessage = "")
     }
 
+    fun dismissPublishBranchDialog() {
+        _uiState.value = _uiState.value.copy(showPublishBranchDialog = false)
+    }
+
+    fun confirmPublishAndPush() {
+        val state = _uiState.value
+        _uiState.value = state.copy(showPublishBranchDialog = false, isLoading = true, statusMessage = "Publishing branch and pushing...")
+        viewModelScope.launch(Dispatchers.IO) {
+            gitService.publishBranch(state.repoPath.trim(), state.currentBranch)
+                .onSuccess { output ->
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        isCurrentBranchPublished = true,
+                        statusMessage = "Branch published and pushed successfully!\n$output",
+                        isError = false,
+                    )
+                }
+                .onFailure { e ->
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        statusMessage = "Failed to publish branch: ${e.message}",
+                        isError = true,
+                    )
+                }
+        }
+    }
+
     fun createPullRequest() {
         val state = _uiState.value
         val path = state.repoPath.trim()
@@ -899,6 +933,7 @@ class MainViewModel(
                                 loadChangedFiles()
                             }
                             .onFailure { e ->
+                                val isNoUpstream = e.message?.contains("has no upstream branch") == true
                                 _uiState.value = _uiState.value.copy(
                                     isLoading = false,
                                     changedFiles = emptyList(),
@@ -906,8 +941,10 @@ class MainViewModel(
                                     fullDiff = "",
                                     commitSummary = "",
                                     commitDescription = "",
-                                    statusMessage = "Committed but push failed: ${e.message}",
-                                    isError = true,
+                                    statusMessage = if (isNoUpstream) "Committed successfully. Branch has not been published yet."
+                                        else "Committed but push failed: ${e.message}",
+                                    isError = !isNoUpstream,
+                                    showPublishBranchDialog = isNoUpstream,
                                 )
                                 loadChangedFiles()
                             }
