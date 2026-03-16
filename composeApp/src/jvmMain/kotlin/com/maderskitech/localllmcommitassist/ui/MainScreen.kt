@@ -1,11 +1,15 @@
 package com.maderskitech.localllmcommitassist.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -17,15 +21,22 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maderskitech.localllmcommitassist.data.AttachmentConfig
@@ -379,52 +390,60 @@ fun MainScreen(
         // Tab content
         when (selectedTab) {
             0 -> {
+                val selectedCount = state.changedFiles.count { it.isSelected }
+                val hasSelectedFiles = selectedCount > 0
+                val canGenerate = !state.isLoading && state.repoPath.isNotBlank() && hasSelectedFiles
+                var showDiff by remember { mutableStateOf(false) }
+
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Max),
                 ) {
-                    // Left side — Changed files selection
+                    // LEFT PANEL — File selection (Step 1)
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                         shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
                     ) {
                         Column(
-                            modifier = Modifier.fillMaxWidth().padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxSize().padding(16.dp),
                         ) {
+                            // Header row
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text(
-                                    "Changed Files",
+                                    "Changed Files (${state.changedFiles.size})",
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.primary,
                                 )
-                                FilledTonalButton(
+                                IconButton(
                                     onClick = { viewModel.loadChangedFiles() },
                                     enabled = !state.isLoading && state.repoPath.isNotBlank(),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                    colors = ButtonDefaults.filledTonalButtonColors(
-                                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    ),
                                 ) {
-                                    Text("Refresh", style = MaterialTheme.typography.labelSmall)
+                                    Icon(
+                                        Icons.Default.Refresh,
+                                        contentDescription = "Refresh",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
                                 }
                             }
 
                             if (state.changedFiles.isEmpty()) {
-                                Text(
-                                    "No changed files detected. Click Refresh to scan.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(vertical = 8.dp),
-                                )
+                                Box(
+                                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        "No changed files detected. Click Refresh to scan.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
                             } else {
-                                // Select All / Unselect All row
+                                // Select All row with count
                                 val allSelected = state.changedFiles.all { it.isSelected }
                                 val noneSelected = state.changedFiles.none { it.isSelected }
                                 Row(
@@ -446,106 +465,118 @@ fun MainScreen(
                                         ),
                                     )
                                     Text(
-                                        if (allSelected) "Unselect All" else "Select All",
+                                        "Select All ($selectedCount/${state.changedFiles.size} selected)",
                                         style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
-                                Text(
-                                    "${state.changedFiles.count { it.isSelected }}/${state.changedFiles.size} selected",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
 
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-                                // File list
+                                // File list — fills available space
                                 val fileListScrollState = rememberScrollState()
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .heightIn(max = 400.dp)
+                                        .weight(1f)
                                         .verticalScroll(fileListScrollState),
                                 ) {
                                     state.changedFiles.forEach { file ->
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clickable { viewModel.toggleFileSelection(file.path) }
-                                                .padding(vertical = 2.dp),
-                                        ) {
-                                            Checkbox(
-                                                checked = file.isSelected,
-                                                onCheckedChange = { viewModel.toggleFileSelection(file.path) },
-                                                colors = CheckboxDefaults.colors(
-                                                    checkedColor = MaterialTheme.colorScheme.primary,
-                                                    uncheckedColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                ),
-                                            )
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    file.path,
-                                                    style = MaterialTheme.typography.bodySmall.copy(
-                                                        fontFamily = FontFamily.Monospace,
-                                                        fontSize = 12.sp,
-                                                    ),
-                                                    color = MaterialTheme.colorScheme.onSurface,
-                                                )
-                                                Text(
-                                                    file.status,
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = when (file.status) {
-                                                        "added", "untracked" -> MaterialTheme.colorScheme.tertiary
-                                                        "deleted" -> MaterialTheme.colorScheme.error
-                                                        "modified" -> MaterialTheme.colorScheme.primary
-                                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                                    },
-                                                )
-                                            }
-                                        }
+                                        FileListItem(
+                                            filePath = file.path,
+                                            status = file.status,
+                                            isSelected = file.isSelected,
+                                            onToggle = { viewModel.toggleFileSelection(file.path) },
+                                        )
                                     }
                                 }
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+
+                            // Generate button at bottom of left panel
+                            Button(
+                                onClick = { viewModel.generateCommitMessage() },
+                                enabled = canGenerate,
+                                modifier = Modifier.fillMaxWidth().height(48.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                                    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                ),
+                            ) {
+                                if (state.isLoading) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        strokeWidth = 2.dp,
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Generating...", style = MaterialTheme.typography.labelLarge)
+                                } else {
+                                    Text("Generate Commit Message", style = MaterialTheme.typography.labelLarge)
+                                }
+                            }
+                            if (!canGenerate && !state.isLoading && !hasSelectedFiles && state.changedFiles.isNotEmpty()) {
+                                Text(
+                                    "Select files to generate",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 4.dp).align(Alignment.CenterHorizontally),
+                                )
                             }
                         }
                     }
 
-                    // Right side — Generate + Commit message
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.weight(1f),
+                    // RIGHT PANEL — Review & Commit (Step 2)
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
                     ) {
-                        // Generate button — primary CTA
-                        Button(
-                            onClick = { viewModel.generateCommitMessage() },
-                            enabled = !state.isLoading && state.repoPath.isNotBlank() && state.changedFiles.any { it.isSelected },
-                            modifier = Modifier.fillMaxWidth().height(48.dp),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
-                                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                            ),
+                        Column(
+                            modifier = Modifier.fillMaxSize().padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            Text("Generate Commit Message", style = MaterialTheme.typography.labelLarge)
-                        }
-
-                        // Commit message card
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            shape = RoundedCornerShape(12.dp),
-                        ) {
-                            Column(
-                                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                Text(
-                                    "Commit Message",
-                                    style = MaterialTheme.typography.titleMedium,
+                            // Loading bar at top
+                            if (state.isLoading) {
+                                LinearProgressIndicator(
+                                    modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
                                     color = MaterialTheme.colorScheme.primary,
+                                    trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                                 )
+                            }
 
+                            // Header
+                            Text(
+                                "Review & Commit",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+
+                            // Diff preview
+                            DiffPreview(
+                                diff = state.fullDiff,
+                                expanded = showDiff,
+                                onToggle = { showDiff = !showDiff },
+                            )
+
+                            if (state.commitSummary.isBlank() && state.commitDescription.isBlank() && !state.isLoading) {
+                                // Empty state placeholder
+                                Box(
+                                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        "Generate a commit message",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            } else {
+                                // Summary field
                                 OutlinedTextField(
                                     value = state.commitSummary,
                                     onValueChange = { viewModel.updateCommitSummary(it) },
@@ -559,76 +590,32 @@ fun MainScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                 )
 
+                                // Description field — grows to fill
                                 OutlinedTextField(
                                     value = state.commitDescription,
                                     onValueChange = { viewModel.updateCommitDescription(it) },
                                     label = { Text("Description") },
                                     minLines = 3,
-                                    maxLines = 6,
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = MaterialTheme.colorScheme.primary,
                                         unfocusedBorderColor = MaterialTheme.colorScheme.outline,
                                     ),
                                     shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier.fillMaxWidth().weight(1f),
                                 )
-
-                                // Action buttons
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.clip(RoundedCornerShape(0.dp)),
-                                ) {
-                                    Button(
-                                        onClick = { viewModel.commit(andPush = pushAfterCommit) },
-                                        enabled = !state.isLoading && state.commitSummary.isNotBlank(),
-                                        shape = RoundedCornerShape(8.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = MaterialTheme.colorScheme.tertiary,
-                                            contentColor = MaterialTheme.colorScheme.onTertiary,
-                                        ),
-                                    ) {
-                                        Text(if (pushAfterCommit) "Commit & Push" else "Commit")
-                                    }
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.padding(start = 4.dp),
-                                    ) {
-                                        Checkbox(
-                                            checked = pushAfterCommit,
-                                            onCheckedChange = { pushAfterCommit = it },
-                                            colors = CheckboxDefaults.colors(
-                                                checkedColor = MaterialTheme.colorScheme.tertiary,
-                                                uncheckedColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            ),
-                                        )
-                                        Text(
-                                            "Push",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
-                                    FilledTonalButton(
-                                        onClick = {
-                                            val text = if (state.commitDescription.isBlank()) {
-                                                state.commitSummary
-                                            } else {
-                                                "${state.commitSummary}\n\n${state.commitDescription}"
-                                            }
-                                            val clipboard = Toolkit.getDefaultToolkit().systemClipboard
-                                            clipboard.setContents(StringSelection(text), null)
-                                        },
-                                        enabled = state.commitSummary.isNotBlank(),
-                                        shape = RoundedCornerShape(8.dp),
-                                        colors = ButtonDefaults.filledTonalButtonColors(
-                                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        ),
-                                    ) {
-                                        Text("Copy to Clipboard")
-                                    }
-                                }
                             }
+
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                            // Action buttons
+                            CommitActions(
+                                commitSummary = state.commitSummary,
+                                commitDescription = state.commitDescription,
+                                isLoading = state.isLoading,
+                                pushAfterCommit = pushAfterCommit,
+                                onPushToggle = { pushAfterCommit = it },
+                                onCommit = { viewModel.commit(andPush = pushAfterCommit) },
+                            )
                         }
                     }
                 }
@@ -1044,6 +1031,192 @@ fun MainScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun FileStatusIndicator(status: String) {
+    val color = when (status) {
+        "added", "untracked" -> Color(0xFF4CAF50) // green
+        "modified" -> Color(0xFF2196F3) // blue
+        "deleted" -> Color(0xFFF44336) // red
+        else -> Color.Gray
+    }
+    Box(
+        modifier = Modifier
+            .size(8.dp)
+            .background(color, CircleShape),
+    )
+}
+
+@Composable
+private fun FileListItem(
+    filePath: String,
+    status: String,
+    isSelected: Boolean,
+    onToggle: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onToggle() }
+            .padding(vertical = 2.dp),
+    ) {
+        Checkbox(
+            checked = isSelected,
+            onCheckedChange = { onToggle() },
+            colors = CheckboxDefaults.colors(
+                checkedColor = MaterialTheme.colorScheme.primary,
+                uncheckedColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+        )
+        FileStatusIndicator(status)
+        Spacer(Modifier.width(8.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                filePath,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                ),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                status,
+                style = MaterialTheme.typography.labelSmall,
+                color = when (status) {
+                    "added", "untracked" -> MaterialTheme.colorScheme.tertiary
+                    "deleted" -> MaterialTheme.colorScheme.error
+                    "modified" -> MaterialTheme.colorScheme.primary
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun DiffPreview(
+    diff: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+) {
+    Column {
+        TextButton(
+            onClick = onToggle,
+            enabled = diff.isNotBlank(),
+        ) {
+            Icon(
+                if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(if (expanded) "Hide Diff" else "Show Diff")
+        }
+
+        AnimatedVisibility(
+            visible = expanded && diff.isNotBlank(),
+            enter = expandVertically(),
+            exit = shrinkVertically(),
+        ) {
+            val annotatedDiff = remember(diff) {
+                buildAnnotatedString {
+                    diff.lineSequence().forEach { line ->
+                        val style = when {
+                            line.startsWith("@@") -> SpanStyle(color = Color(0xFF64B5F6)) // blue
+                            line.startsWith("+") -> SpanStyle(color = Color(0xFF81C784)) // green
+                            line.startsWith("-") -> SpanStyle(color = Color(0xFFE57373)) // red
+                            else -> SpanStyle()
+                        }
+                        withStyle(style) { append(line) }
+                        append("\n")
+                    }
+                }
+            }
+            val diffScrollState = rememberScrollState()
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                shape = RoundedCornerShape(8.dp),
+            ) {
+                Text(
+                    annotatedDiff,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 200.dp)
+                        .verticalScroll(diffScrollState)
+                        .padding(8.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CommitActions(
+    commitSummary: String,
+    commitDescription: String,
+    isLoading: Boolean,
+    pushAfterCommit: Boolean,
+    onPushToggle: (Boolean) -> Unit,
+    onCommit: () -> Unit,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Button(
+            onClick = onCommit,
+            enabled = !isLoading && commitSummary.isNotBlank(),
+            shape = RoundedCornerShape(8.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.tertiary,
+                contentColor = MaterialTheme.colorScheme.onTertiary,
+            ),
+        ) {
+            Text(if (pushAfterCommit) "Commit & Push" else "Commit")
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Checkbox(
+                checked = pushAfterCommit,
+                onCheckedChange = onPushToggle,
+                colors = CheckboxDefaults.colors(
+                    checkedColor = MaterialTheme.colorScheme.tertiary,
+                    uncheckedColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                ),
+            )
+            Text(
+                "Push",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.weight(1f))
+        IconButton(
+            onClick = {
+                val text = if (commitDescription.isBlank()) {
+                    commitSummary
+                } else {
+                    "$commitSummary\n\n$commitDescription"
+                }
+                val clipboard = Toolkit.getDefaultToolkit().systemClipboard
+                clipboard.setContents(StringSelection(text), null)
+            },
+            enabled = commitSummary.isNotBlank(),
+        ) {
+            Icon(
+                Icons.Default.ContentCopy,
+                contentDescription = "Copy commit message",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
