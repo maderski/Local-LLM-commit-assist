@@ -578,6 +578,16 @@ class MainViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.value = _uiState.value.copy(isLoading = true, statusMessage = "Creating pull request...", isError = false)
 
+            val hasCommits = gitService.hasCommitsAheadOfBranch(path, targetBranch)
+            if (hasCommits.isFailure || hasCommits.getOrDefault(false) == false) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    statusMessage = "No changes to create a PR: branch '$currentBranch' has no commits ahead of '$targetBranch'",
+                    isError = true,
+                )
+                return@launch
+            }
+
             val remoteUrlResult = gitService.getRemoteUrl(path)
             remoteUrlResult.onFailure { e ->
                 _uiState.value = _uiState.value.copy(

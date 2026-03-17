@@ -375,6 +375,21 @@ class GitService {
         output
     }
 
+    fun hasCommitsAheadOfBranch(repoPath: String, baseBranch: String): Result<Boolean> = runCatching {
+        val process = ProcessBuilder("git", "log", "--oneline", "$baseBranch..HEAD")
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText().trim()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git log failed (exit $exitCode): $output")
+        }
+        output.isNotBlank()
+    }
+
     fun hasUncommittedChanges(repoPath: String): Result<Boolean> = runCatching {
         val process = ProcessBuilder("git", "status", "--porcelain")
             .directory(File(repoPath))
