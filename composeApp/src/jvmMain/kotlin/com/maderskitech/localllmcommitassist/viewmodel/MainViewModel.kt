@@ -449,7 +449,7 @@ class MainViewModel(
         val targetBranch = _uiState.value.prTargetBranch
 
         viewModelScope.launch(Dispatchers.IO) {
-            _uiState.value = _uiState.value.copy(isLoading = true, statusMessage = "Loading commit history...", isError = false)
+            _uiState.value = _uiState.value.copy(isLoading = true, statusMessage = "Loading commit history...", isError = false, prUrl = "")
 
             val commitLogResult = gitService.getCommitLog(path, targetBranch)
             commitLogResult.onFailure { e ->
