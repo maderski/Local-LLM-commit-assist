@@ -66,6 +66,9 @@ class LlmService {
             )
         }
         val body = response.bodyAsText()
+        if (!response.status.isSuccess()) {
+            error("LLM API error ${response.status.value}: ${response.status.description}")
+        }
         val chatResponse = json.decodeFromString<ChatResponse>(body)
         chatResponse.choices.first().message.content.trim()
     }
@@ -101,6 +104,9 @@ class LlmService {
         }
 
         val body = response.bodyAsText()
+        if (!response.status.isSuccess()) {
+            error("LLM API error ${response.status.value}: ${response.status.description}")
+        }
         val chatResponse = json.decodeFromString<ChatResponse>(body)
         val content = chatResponse.choices.first().message.content.trim()
 
@@ -163,6 +169,9 @@ class LlmService {
         }
 
         val body = response.bodyAsText()
+        if (!response.status.isSuccess()) {
+            error("LLM API error ${response.status.value}: ${response.status.description}")
+        }
         val chatResponse = json.decodeFromString<ChatResponse>(body)
         val content = chatResponse.choices.first().message.content.trim()
 
@@ -287,6 +296,9 @@ class LlmService {
         }
 
         val body = response.bodyAsText()
+        if (!response.status.isSuccess()) {
+            error("LLM API error ${response.status.value}: ${response.status.description}")
+        }
         val chatResponse = json.decodeFromString<ChatResponse>(body)
         val raw = chatResponse.choices.firstOrNull()?.message?.content.orEmpty()
         val cleaned = raw
