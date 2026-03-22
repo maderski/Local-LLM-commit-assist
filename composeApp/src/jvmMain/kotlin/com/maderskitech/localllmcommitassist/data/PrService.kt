@@ -150,16 +150,20 @@ class PrService {
             return@runCatching GitHubPrResult(url = htmlUrl, reviewerWarning = "PR created but reviewers could not be assigned: no PR number in response")
         }
 
-        val reviewerResponse = client.post("https://api.github.com/repos/$owner/$repo/pulls/$prNumber/requested_reviewers") {
-            header(HttpHeaders.Authorization, "Bearer $token")
-            header(HttpHeaders.Accept, "application/vnd.github+json")
-            header("X-GitHub-Api-Version", "2022-11-28")
-            contentType(ContentType.Application.Json)
-            setBody(GitHubReviewersRequest(reviewers = reviewers))
+        val reviewerWarning = runCatching {
+            val reviewerResponse = client.post("https://api.github.com/repos/$owner/$repo/pulls/$prNumber/requested_reviewers") {
+                header(HttpHeaders.Authorization, "Bearer $token")
+                header(HttpHeaders.Accept, "application/vnd.github+json")
+                header("X-GitHub-Api-Version", "2022-11-28")
+                contentType(ContentType.Application.Json)
+                setBody(GitHubReviewersRequest(reviewers = reviewers))
+            }
+            if (!reviewerResponse.status.isSuccess()) {
+                "PR created but reviewer assignment failed (${reviewerResponse.status.value}): ${reviewerResponse.bodyAsText()}"
+            } else null
+        }.getOrElse { e ->
+            "PR created but reviewer assignment failed: ${e.message}"
         }
-        val reviewerWarning = if (!reviewerResponse.status.isSuccess()) {
-            "PR created but reviewer assignment failed (${reviewerResponse.status.value}): ${reviewerResponse.bodyAsText()}"
-        } else null
 
         GitHubPrResult(url = htmlUrl, reviewerWarning = reviewerWarning)
     }
