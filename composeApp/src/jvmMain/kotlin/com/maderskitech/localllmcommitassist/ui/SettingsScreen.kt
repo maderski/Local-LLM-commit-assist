@@ -349,7 +349,7 @@ fun SettingsScreen(
 
                         FilledTonalButton(
                             onClick = {
-                                val login = newGitHubReviewerLogin.trim()
+                                val login = newGitHubReviewerLogin.trim().trimStart('@')
                                 if (login.isNotBlank() && githubReviewers.none { it.login == login }) {
                                     githubReviewers = githubReviewers + GitHubReviewer(login = login)
                                     settingsRepository.setGitHubReviewers(githubReviewers)
