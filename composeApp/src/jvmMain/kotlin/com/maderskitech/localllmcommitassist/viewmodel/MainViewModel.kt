@@ -6,6 +6,7 @@ import com.maderskitech.localllmcommitassist.data.AttachmentConfig
 import com.maderskitech.localllmcommitassist.data.GitService
 import com.maderskitech.localllmcommitassist.data.LlmService
 import com.maderskitech.localllmcommitassist.data.PrAttachment
+import com.maderskitech.localllmcommitassist.data.GitHubPrResult
 import com.maderskitech.localllmcommitassist.data.PrService
 import com.maderskitech.localllmcommitassist.data.SettingsRepository
 import java.io.File
@@ -663,23 +664,46 @@ class MainViewModel(
 
             _uiState.value = _uiState.value.copy(statusMessage = "Creating pull request...", isError = false)
 
-            val prResult: Result<String> = when (platform) {
+            when (platform) {
                 "github" -> {
                     val token = settingsRepository.getGitHubToken()
                     val parsed = prService.parseGitHubRemote(remoteUrl)
                     if (parsed == null) {
-                        Result.failure(Exception("Could not parse GitHub remote URL: $remoteUrl"))
-                    } else {
-                        val reviewers = settingsRepository.getGitHubReviewers().map { it.login }
-                        prService.createGitHubPr(
-                            token = token,
-                            owner = parsed.first,
-                            repo = parsed.second,
-                            title = state.prTitle,
-                            body = augmentedBody,
-                            head = currentBranch,
-                            base = targetBranch,
-                            reviewers = reviewers,
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            statusMessage = "PR creation failed: Could not parse GitHub remote URL: $remoteUrl",
+                            isError = true,
+                        )
+                        return@launch
+                    }
+                    val reviewers = settingsRepository.getGitHubReviewers().map { it.login }
+                    prService.createGitHubPr(
+                        token = token,
+                        owner = parsed.first,
+                        repo = parsed.second,
+                        title = state.prTitle,
+                        body = augmentedBody,
+                        head = currentBranch,
+                        base = targetBranch,
+                        reviewers = reviewers,
+                    ).onSuccess { result ->
+                        val message = if (result.reviewerWarning != null) {
+                            "Pull request created successfully! Warning: ${result.reviewerWarning}"
+                        } else {
+                            "Pull request created successfully!"
+                        }
+                        _uiState.value = _uiState.value.copy(
+                            prUrl = result.url,
+                            isLoading = false,
+                            statusMessage = message,
+                            isError = result.reviewerWarning != null,
+                            prAttachments = emptyList(),
+                        )
+                    }.onFailure { e ->
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            statusMessage = "PR creation failed: ${e.message}",
+                            isError = true,
                         )
                     }
                 }
@@ -688,51 +712,57 @@ class MainViewModel(
                     val username = settingsRepository.getAzureDevOpsUsername()
                     val parsed = prService.parseAzureDevOpsRemote(remoteUrl)
                     if (parsed == null) {
-                        Result.failure(Exception("Could not parse Azure DevOps remote URL: $remoteUrl"))
-                    } else {
-                        val reviewers = settingsRepository.getAzureReviewers()
-                        val workItemIds = if (settingsRepository.getAzureLinkWorkItems()) {
-                            prService.extractWorkItemIds(currentBranch)
-                        } else emptyList()
-                        val tags = if (settingsRepository.getAzureAutoTag()) {
-                            prService.inferTags(parsed.third)
-                        } else emptyList()
-                        prService.createAzureDevOpsPr(
-                            token = token,
-                            username = username,
-                            orgUrl = parsed.first,
-                            project = parsed.second,
-                            repo = parsed.third,
-                            title = state.prTitle,
-                            description = augmentedBody,
-                            sourceBranch = currentBranch,
-                            targetBranch = targetBranch,
-                            reviewers = reviewers,
-                            workItemIds = workItemIds,
-                            tags = tags,
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            statusMessage = "PR creation failed: Could not parse Azure DevOps remote URL: $remoteUrl",
+                            isError = true,
+                        )
+                        return@launch
+                    }
+                    val reviewers = settingsRepository.getAzureReviewers()
+                    val workItemIds = if (settingsRepository.getAzureLinkWorkItems()) {
+                        prService.extractWorkItemIds(currentBranch)
+                    } else emptyList()
+                    val tags = if (settingsRepository.getAzureAutoTag()) {
+                        prService.inferTags(parsed.third)
+                    } else emptyList()
+                    prService.createAzureDevOpsPr(
+                        token = token,
+                        username = username,
+                        orgUrl = parsed.first,
+                        project = parsed.second,
+                        repo = parsed.third,
+                        title = state.prTitle,
+                        description = augmentedBody,
+                        sourceBranch = currentBranch,
+                        targetBranch = targetBranch,
+                        reviewers = reviewers,
+                        workItemIds = workItemIds,
+                        tags = tags,
+                    ).onSuccess { url ->
+                        _uiState.value = _uiState.value.copy(
+                            prUrl = url,
+                            isLoading = false,
+                            statusMessage = "Pull request created successfully!",
+                            isError = false,
+                            prAttachments = emptyList(),
+                        )
+                    }.onFailure { e ->
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            statusMessage = "PR creation failed: ${e.message}",
+                            isError = true,
                         )
                     }
                 }
-                else -> Result.failure(Exception("Unknown platform: $platform"))
-            }
-
-            prResult
-                .onSuccess { url ->
-                    _uiState.value = _uiState.value.copy(
-                        prUrl = url,
-                        isLoading = false,
-                        statusMessage = "Pull request created successfully!",
-                        isError = false,
-                        prAttachments = emptyList(),
-                    )
-                }
-                .onFailure { e ->
+                else -> {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
-                        statusMessage = "PR creation failed: ${e.message}",
+                        statusMessage = "PR creation failed: Unknown platform: $platform",
                         isError = true,
                     )
                 }
+            }
         }
     }
 
