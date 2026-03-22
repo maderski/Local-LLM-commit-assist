@@ -140,16 +140,17 @@ class PrService {
 
         if (reviewers.isNotEmpty()) {
             val prNumber = parsed["number"]?.jsonPrimitive?.content
-            if (prNumber != null) {
-                runCatching {
-                    client.post("https://api.github.com/repos/$owner/$repo/pulls/$prNumber/requested_reviewers") {
-                        header(HttpHeaders.Authorization, "Bearer $token")
-                        header(HttpHeaders.Accept, "application/vnd.github+json")
-                        header("X-GitHub-Api-Version", "2022-11-28")
-                        contentType(ContentType.Application.Json)
-                        setBody(GitHubReviewersRequest(reviewers = reviewers))
-                    }
-                }
+                ?: error("No PR number in GitHub response, cannot assign reviewers")
+            val reviewerResponse = client.post("https://api.github.com/repos/$owner/$repo/pulls/$prNumber/requested_reviewers") {
+                header(HttpHeaders.Authorization, "Bearer $token")
+                header(HttpHeaders.Accept, "application/vnd.github+json")
+                header("X-GitHub-Api-Version", "2022-11-28")
+                contentType(ContentType.Application.Json)
+                setBody(GitHubReviewersRequest(reviewers = reviewers))
+            }
+            val reviewerResponseBody = reviewerResponse.bodyAsText()
+            if (!reviewerResponse.status.isSuccess()) {
+                error("GitHub reviewer assignment error ${reviewerResponse.status.value}: $reviewerResponseBody")
             }
         }
 
