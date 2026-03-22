@@ -670,6 +670,7 @@ class MainViewModel(
                     if (parsed == null) {
                         Result.failure(Exception("Could not parse GitHub remote URL: $remoteUrl"))
                     } else {
+                        val reviewers = settingsRepository.getGitHubReviewers().map { it.login }
                         prService.createGitHubPr(
                             token = token,
                             owner = parsed.first,
@@ -678,6 +679,7 @@ class MainViewModel(
                             body = augmentedBody,
                             head = currentBranch,
                             base = targetBranch,
+                            reviewers = reviewers,
                         )
                     }
                 }

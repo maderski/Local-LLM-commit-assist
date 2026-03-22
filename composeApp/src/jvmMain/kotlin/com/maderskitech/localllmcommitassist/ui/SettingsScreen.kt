@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.maderskitech.localllmcommitassist.data.AzureReviewer
+import com.maderskitech.localllmcommitassist.data.GitHubReviewer
 import com.maderskitech.localllmcommitassist.data.LlmService
 import com.maderskitech.localllmcommitassist.data.SettingsRepository
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +50,8 @@ fun SettingsScreen(
     var newReviewerName by remember { mutableStateOf("") }
     var newReviewerUuid by remember { mutableStateOf("") }
     var newReviewerRequired by remember { mutableStateOf(false) }
+    var githubReviewers by remember { mutableStateOf(settingsRepository.getGitHubReviewers()) }
+    var newGitHubReviewerLogin by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier.fillMaxSize().padding(20.dp).verticalScroll(rememberScrollState()),
@@ -287,6 +290,81 @@ fun SettingsScreen(
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.fillMaxWidth(),
                 )
+
+                if (prPlatform == "github") {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                    Text(
+                        "Reviewers",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
+                    githubReviewers.forEach { reviewer ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                reviewer.login,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(
+                                onClick = {
+                                    githubReviewers = githubReviewers.filter { it.login != reviewer.login }
+                                    settingsRepository.setGitHubReviewers(githubReviewers)
+                                },
+                                modifier = Modifier.size(28.dp),
+                            ) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Remove reviewer",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        OutlinedTextField(
+                            value = newGitHubReviewerLogin,
+                            onValueChange = { newGitHubReviewerLogin = it },
+                            label = { Text("GitHub Username") },
+                            placeholder = { Text("e.g. octocat") },
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f),
+                        )
+
+                        FilledTonalButton(
+                            onClick = {
+                                val login = newGitHubReviewerLogin.trim()
+                                if (login.isNotBlank() && githubReviewers.none { it.login == login }) {
+                                    githubReviewers = githubReviewers + GitHubReviewer(login = login)
+                                    settingsRepository.setGitHubReviewers(githubReviewers)
+                                    newGitHubReviewerLogin = ""
+                                }
+                            },
+                            enabled = newGitHubReviewerLogin.isNotBlank(),
+                            shape = RoundedCornerShape(8.dp),
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Add")
+                        }
+                    }
+                }
 
                 if (prPlatform == "azure_devops") {
                     Row(
