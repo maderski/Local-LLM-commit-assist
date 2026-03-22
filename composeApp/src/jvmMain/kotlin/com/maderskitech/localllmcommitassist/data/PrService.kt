@@ -24,6 +24,16 @@ private data class GitHubPrRequest(
 )
 
 @Serializable
+private data class GitHubReviewersRequest(
+    val reviewers: List<String>,
+)
+
+data class GitHubPrResult(
+    val url: String,
+    val reviewerWarning: String? = null,
+)
+
+@Serializable
 private data class AzureDevOpsPrRequest(
     val title: String,
     val description: String,
@@ -116,7 +126,8 @@ class PrService {
         body: String,
         head: String,
         base: String,
-    ): Result<String> = runCatching {
+        reviewers: List<String> = emptyList(),
+    ): Result<GitHubPrResult> = runCatching {
         val response = client.post("https://api.github.com/repos/$owner/$repo/pulls") {
             header(HttpHeaders.Authorization, "Bearer $token")
             header(HttpHeaders.Accept, "application/vnd.github+json")
@@ -129,8 +140,32 @@ class PrService {
             error("GitHub API error ${response.status.value}: $responseBody")
         }
         val parsed = json.parseToJsonElement(responseBody).jsonObject
-        parsed["html_url"]?.jsonPrimitive?.content
+        val htmlUrl = parsed["html_url"]?.jsonPrimitive?.content
             ?: error("No html_url in GitHub response: $responseBody")
+
+        if (reviewers.isEmpty()) return@runCatching GitHubPrResult(url = htmlUrl)
+
+        val prNumber = parsed["number"]?.jsonPrimitive?.content
+        if (prNumber == null) {
+            return@runCatching GitHubPrResult(url = htmlUrl, reviewerWarning = "PR created but reviewers could not be assigned: no PR number in response")
+        }
+
+        val reviewerWarning = runCatching {
+            val reviewerResponse = client.post("https://api.github.com/repos/$owner/$repo/pulls/$prNumber/requested_reviewers") {
+                header(HttpHeaders.Authorization, "Bearer $token")
+                header(HttpHeaders.Accept, "application/vnd.github+json")
+                header("X-GitHub-Api-Version", "2022-11-28")
+                contentType(ContentType.Application.Json)
+                setBody(GitHubReviewersRequest(reviewers = reviewers))
+            }
+            if (!reviewerResponse.status.isSuccess()) {
+                "PR created but reviewer assignment failed (${reviewerResponse.status.value}): ${reviewerResponse.bodyAsText()}"
+            } else null
+        }.getOrElse { e ->
+            "PR created but reviewer assignment failed: ${e.message}"
+        }
+
+        GitHubPrResult(url = htmlUrl, reviewerWarning = reviewerWarning)
     }
 
     fun inferTags(repoName: String): List<String> {
