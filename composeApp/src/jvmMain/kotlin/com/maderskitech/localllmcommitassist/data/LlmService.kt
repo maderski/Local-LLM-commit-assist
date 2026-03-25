@@ -28,7 +28,7 @@ data class ChatRequest(
 )
 
 @Serializable
-data class ChatResponse(val choices: List<Choice>) {
+data class ChatResponse(val choices: List<Choice> = emptyList()) {
     @Serializable
     data class Choice(val message: ChatMessage)
 }
@@ -70,7 +70,8 @@ class LlmService {
             error("LLM API error ${response.status.value}: ${response.status.description}")
         }
         val chatResponse = json.decodeFromString<ChatResponse>(body)
-        chatResponse.choices.first().message.content.trim()
+        chatResponse.choices.firstOrNull()?.message?.content?.trim()
+            ?: error("LLM returned an empty response: $body")
     }
 
     suspend fun generateCommitMessage(
@@ -108,7 +109,8 @@ class LlmService {
             error("LLM API error ${response.status.value}: ${response.status.description}")
         }
         val chatResponse = json.decodeFromString<ChatResponse>(body)
-        val content = chatResponse.choices.first().message.content.trim()
+        val content = chatResponse.choices.firstOrNull()?.message?.content?.trim()
+            ?: error("LLM returned an empty response: $body")
 
         val parsed = parseResponse(content)
         val summary = parsed.summary.ifBlank { "Update project files" }
@@ -173,7 +175,8 @@ class LlmService {
             error("LLM API error ${response.status.value}: ${response.status.description}")
         }
         val chatResponse = json.decodeFromString<ChatResponse>(body)
-        val content = chatResponse.choices.first().message.content.trim()
+        val content = chatResponse.choices.firstOrNull()?.message?.content?.trim()
+            ?: error("LLM returned an empty response: $body")
 
         val parsed = parseResponse(content)
         PrDescription(title = parsed.summary, body = parsed.description)
