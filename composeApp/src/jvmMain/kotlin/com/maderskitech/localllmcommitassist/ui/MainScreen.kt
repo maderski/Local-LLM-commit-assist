@@ -727,7 +727,7 @@ fun MainScreen(
                                         verticalArrangement = Arrangement.spacedBy(2.dp),
                                     ) {
                                         Text(
-                                            "Attachments",
+                                            "Attachments (${state.prAttachments.size})",
                                             style = MaterialTheme.typography.labelLarge,
                                             color = MaterialTheme.colorScheme.primary,
                                         )
@@ -769,23 +769,28 @@ fun MainScreen(
                                 }
 
                                 Box(
-                                    modifier = Modifier.fillMaxWidth().then(
-                                        if (isDragHovering) Modifier
-                                            .border(
-                                                BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
-                                                RoundedCornerShape(8.dp),
-                                            )
-                                            .background(
-                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-                                                RoundedCornerShape(8.dp),
-                                            )
-                                        else Modifier
-                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(
+                                            BorderStroke(
+                                                if (isDragHovering) 2.dp else 1.dp,
+                                                if (isDragHovering) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                                            ),
+                                            RoundedCornerShape(12.dp),
+                                        )
+                                        .background(
+                                            if (isDragHovering) {
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                                            } else {
+                                                MaterialTheme.colorScheme.surfaceContainerLow
+                                            },
+                                            RoundedCornerShape(12.dp),
+                                        ),
                                 ) {
                                     Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(8.dp),
+                                            .padding(12.dp),
                                         verticalArrangement = Arrangement.spacedBy(8.dp),
                                     ) {
                                         if (isDragHovering) {
@@ -796,6 +801,50 @@ fun MainScreen(
                                                 fontWeight = FontWeight.SemiBold,
                                                 modifier = Modifier.padding(horizontal = 4.dp),
                                             )
+                                        }
+
+                                        if (state.prAttachments.isEmpty()) {
+                                            Text(
+                                                "No attachments added yet.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(horizontal = 4.dp),
+                                            )
+                                        } else {
+                                            Text(
+                                                "${state.prAttachments.size} attachment${if (state.prAttachments.size == 1) "" else "s"} ready to upload with this PR.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.tertiary,
+                                                fontWeight = FontWeight.Medium,
+                                                modifier = Modifier.padding(horizontal = 4.dp),
+                                            )
+
+                                            @OptIn(ExperimentalLayoutApi::class)
+                                            FlowRow(
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                            ) {
+                                                state.prAttachments.forEach { attachment ->
+                                                    val sizeMb = "%.1f".format(attachment.sizeBytes.toDouble() / (1024 * 1024))
+                                                    InputChip(
+                                                        selected = false,
+                                                        onClick = {},
+                                                        label = { Text("${attachment.name} ($sizeMb MB)", style = MaterialTheme.typography.bodySmall) },
+                                                        trailingIcon = {
+                                                            IconButton(
+                                                                onClick = { viewModel.removeAttachment(attachment.id) },
+                                                                modifier = Modifier.size(18.dp),
+                                                            ) {
+                                                                Icon(
+                                                                    Icons.Default.Close,
+                                                                    contentDescription = "Remove ${attachment.name}",
+                                                                    modifier = Modifier.size(14.dp),
+                                                                )
+                                                            }
+                                                        },
+                                                    )
+                                                }
+                                            }
                                         }
 
                                         OutlinedTextField(
@@ -810,36 +859,6 @@ fun MainScreen(
                                             ),
                                             shape = RoundedCornerShape(8.dp),
                                             modifier = Modifier.fillMaxWidth(),
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Attachment chips
-                            if (state.prAttachments.isNotEmpty()) {
-                                @OptIn(ExperimentalLayoutApi::class)
-                                FlowRow(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                                ) {
-                                    state.prAttachments.forEach { attachment ->
-                                        val sizeMb = "%.1f".format(attachment.sizeBytes.toDouble() / (1024 * 1024))
-                                        InputChip(
-                                            selected = false,
-                                            onClick = {},
-                                            label = { Text("${attachment.name} ($sizeMb MB)", style = MaterialTheme.typography.bodySmall) },
-                                            trailingIcon = {
-                                                IconButton(
-                                                    onClick = { viewModel.removeAttachment(attachment.id) },
-                                                    modifier = Modifier.size(18.dp),
-                                                ) {
-                                                    Icon(
-                                                        Icons.Default.Close,
-                                                        contentDescription = "Remove ${attachment.name}",
-                                                        modifier = Modifier.size(14.dp),
-                                                    )
-                                                }
-                                            },
                                         )
                                     }
                                 }
