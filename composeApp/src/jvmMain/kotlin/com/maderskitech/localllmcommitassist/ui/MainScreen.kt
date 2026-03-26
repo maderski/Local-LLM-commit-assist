@@ -49,6 +49,7 @@ import com.maderskitech.localllmcommitassist.viewmodel.MainViewModel
 import java.awt.Desktop
 import java.awt.Component
 import java.awt.Container
+import java.awt.Image
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
@@ -1226,7 +1227,7 @@ private fun pasteClipboardAttachment(viewModel: MainViewModel) {
 
         transferable.isDataFlavorSupported(DataFlavor.imageFlavor) -> {
             runCatching {
-                val image = transferable.getTransferData(DataFlavor.imageFlavor) as? BufferedImage
+                val image = transferable.getTransferData(DataFlavor.imageFlavor) as? Image
                     ?: error("Clipboard image format is not supported")
                 createClipboardImageTempFile(image)
             }.onSuccess { file ->
@@ -1240,11 +1241,28 @@ private fun pasteClipboardAttachment(viewModel: MainViewModel) {
     }
 }
 
-private fun createClipboardImageTempFile(image: BufferedImage): File {
+private fun createClipboardImageTempFile(image: Image): File {
     val tempFile = File(System.getProperty("java.io.tmpdir"), "pr-clipboard-${UUID.randomUUID()}.png")
-    ImageIO.write(image, "png", tempFile)
+    ImageIO.write(image.toBufferedImage(), "png", tempFile)
     tempFile.deleteOnExit()
     return tempFile
+}
+
+private fun Image.toBufferedImage(): BufferedImage {
+    if (this is BufferedImage) return this
+
+    val width = getWidth(null)
+    val height = getHeight(null)
+    require(width > 0 && height > 0) { "Clipboard image has invalid dimensions." }
+
+    return BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB).also { buffered ->
+        val graphics = buffered.createGraphics()
+        try {
+            graphics.drawImage(this, 0, 0, null)
+        } finally {
+            graphics.dispose()
+        }
+    }
 }
 
 @Composable
