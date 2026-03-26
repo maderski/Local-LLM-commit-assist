@@ -24,6 +24,7 @@ data class SelectableFile(
 data class MainUiState(
     val savedProjects: List<String> = emptyList(),
     val repoPath: String = "",
+    val prPlatform: String = "github",
     val currentBranch: String = "",
     val availableBranches: List<String> = emptyList(),
     val prTargetBranch: String = "",
@@ -44,8 +45,9 @@ data class MainUiState(
     val pendingSwitchBranch: String = "",
     val isPendingBranchCreate: Boolean = false,
     val prAttachments: List<PrAttachment> = emptyList(),
-    val showFileSizeErrorDialog: Boolean = false,
-    val fileSizeErrorMessage: String = "",
+    val showAttachmentValidationDialog: Boolean = false,
+    val attachmentValidationTitle: String = "",
+    val attachmentValidationMessage: String = "",
     val showPublishBranchDialog: Boolean = false,
 )
 
@@ -60,6 +62,7 @@ class MainViewModel(
         MainUiState(
             savedProjects = settingsRepository.getSavedProjects(),
             repoPath = settingsRepository.getSelectedProject(),
+            prPlatform = settingsRepository.getPrPlatform(),
             prTargetBranch = settingsRepository.getPrTargetBranch(),
         )
     )
@@ -503,22 +506,75 @@ class MainViewModel(
         val platform = settingsRepository.getPrPlatform()
         val maxSize = AttachmentConfig.maxSizeForPlatform(platform)
         val maxLabel = AttachmentConfig.maxSizeLabelForPlatform(platform)
-        val existingPaths = _uiState.value.prAttachments.map { it.file.absolutePath }.toSet()
+        val platformLabel = if (platform == "azure_devops") "Azure DevOps" else "GitHub"
+        val existingPaths = _uiState.value.prAttachments.map { it.file.absolutePath }.toMutableSet()
+        val addedAttachments = mutableListOf<PrAttachment>()
+        val unsupportedFiles = mutableListOf<String>()
+        val duplicateFiles = mutableListOf<String>()
+        val oversizedFiles = mutableListOf<String>()
 
         for (file in files) {
-            if (file.extension.lowercase() !in AttachmentConfig.allowedExtensions) continue
-            if (file.absolutePath in existingPaths) continue
-            if (file.length() > maxSize) {
-                val sizeMb = "%.1f".format(file.length().toDouble() / (1024 * 1024))
-                _uiState.value = _uiState.value.copy(
-                    showFileSizeErrorDialog = true,
-                    fileSizeErrorMessage = "'${file.name}' ($sizeMb MB) exceeds the $maxLabel limit for ${if (platform == "azure_devops") "Azure DevOps" else "GitHub"}.",
-                )
-                return
+            val extension = file.extension.lowercase()
+            when {
+                extension !in AttachmentConfig.allowedExtensions -> unsupportedFiles += file.name
+                file.absolutePath in existingPaths -> duplicateFiles += file.name
+                file.length() > maxSize -> {
+                    val sizeMb = "%.1f".format(file.length().toDouble() / (1024 * 1024))
+                    oversizedFiles += "${file.name} ($sizeMb MB)"
+                }
+                else -> {
+                    addedAttachments += PrAttachment(file = file)
+                    existingPaths += file.absolutePath
+                }
             }
-            val attachment = PrAttachment(file = file)
+        }
+
+        if (addedAttachments.isNotEmpty()) {
+            val updatedAttachments = _uiState.value.prAttachments + addedAttachments
+            val addedCount = addedAttachments.size
+            val statusMessage = if (unsupportedFiles.isEmpty() && duplicateFiles.isEmpty() && oversizedFiles.isEmpty()) {
+                if (addedCount == 1) {
+                    "Added attachment '${addedAttachments.first().name}'."
+                } else {
+                    "Added $addedCount attachments."
+                }
+            } else {
+                "Added $addedCount attachment${if (addedCount == 1) "" else "s"} with some files skipped."
+            }
             _uiState.value = _uiState.value.copy(
-                prAttachments = _uiState.value.prAttachments + attachment,
+                prAttachments = updatedAttachments,
+                statusMessage = statusMessage,
+                isError = false,
+            )
+        }
+
+        if (unsupportedFiles.isNotEmpty() || duplicateFiles.isNotEmpty() || oversizedFiles.isNotEmpty()) {
+            val messageParts = buildList {
+                if (unsupportedFiles.isNotEmpty()) {
+                    add("Unsupported files: ${unsupportedFiles.joinToString(", ")}. Supported types: ${AttachmentConfig.allowedExtensions.sorted().joinToString(", ")}.")
+                }
+                if (duplicateFiles.isNotEmpty()) {
+                    add("Already attached: ${duplicateFiles.joinToString(", ")}.")
+                }
+                if (oversizedFiles.isNotEmpty()) {
+                    add("Over $maxLabel for $platformLabel: ${oversizedFiles.joinToString(", ")}.")
+                }
+            }
+
+            _uiState.value = _uiState.value.copy(
+                showAttachmentValidationDialog = true,
+                attachmentValidationTitle = if (oversizedFiles.isNotEmpty() && unsupportedFiles.isEmpty() && duplicateFiles.isEmpty()) {
+                    "Attachment Too Large"
+                } else {
+                    "Attachment Issues"
+                },
+                attachmentValidationMessage = messageParts.joinToString("\n\n"),
+                isError = addedAttachments.isEmpty(),
+                statusMessage = if (addedAttachments.isEmpty()) {
+                    "No attachments were added."
+                } else {
+                    _uiState.value.statusMessage
+                },
             )
         }
     }
@@ -529,8 +585,12 @@ class MainViewModel(
         )
     }
 
-    fun dismissFileSizeErrorDialog() {
-        _uiState.value = _uiState.value.copy(showFileSizeErrorDialog = false, fileSizeErrorMessage = "")
+    fun dismissAttachmentValidationDialog() {
+        _uiState.value = _uiState.value.copy(
+            showAttachmentValidationDialog = false,
+            attachmentValidationTitle = "",
+            attachmentValidationMessage = "",
+        )
     }
 
     fun dismissPublishBranchDialog() {

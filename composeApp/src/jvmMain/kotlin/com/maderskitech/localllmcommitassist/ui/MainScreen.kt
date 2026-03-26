@@ -7,7 +7,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -620,6 +623,8 @@ fun MainScreen(
                 }
             }
             1 -> {
+                val platformName = if (state.prPlatform == "azure_devops") "Azure DevOps" else "GitHub"
+                val platformLimit = AttachmentConfig.maxSizeLabelForPlatform(state.prPlatform)
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     // Pull Request card
                     Card(
@@ -708,66 +713,103 @@ fun MainScreen(
                                 modifier = Modifier.fillMaxWidth(),
                             )
 
-                            // PR Description with drop zone indicator
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                                    ) {
+                                        Text(
+                                            "Attachments",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                        Text(
+                                            "Drag images or videos here, or use the attach button. Supported types: ${AttachmentConfig.allowedExtensions.sorted().joinToString(", ")}. Current limit for $platformName: $platformLimit.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+
+                                    TooltipBox(
+                                        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                                        tooltip = { PlainTooltip { Text("Attach Files") } },
+                                        state = rememberTooltipState(),
+                                    ) {
+                                        IconButton(
+                                            onClick = {
+                                                val chooser = JFileChooser().apply {
+                                                    fileSelectionMode = JFileChooser.FILES_ONLY
+                                                    isMultiSelectionEnabled = true
+                                                    dialogTitle = "Select Images or Videos"
+                                                    fileFilter = FileNameExtensionFilter(
+                                                        "Images & Videos",
+                                                        *AttachmentConfig.allowedExtensions.toTypedArray(),
+                                                    )
+                                                }
+                                                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                                                    viewModel.addAttachments(chooser.selectedFiles.toList())
+                                                }
+                                            },
+                                        ) {
+                                            Icon(
+                                                Icons.Default.AttachFile,
+                                                contentDescription = "Attach Files",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                            )
+                                        }
+                                    }
+                                }
+
                                 Box(
-                                    modifier = Modifier.weight(1f).then(
+                                    modifier = Modifier.fillMaxWidth().then(
                                         if (isDragHovering) Modifier
                                             .border(
                                                 BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
                                                 RoundedCornerShape(8.dp),
                                             )
                                             .background(
-                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
                                                 RoundedCornerShape(8.dp),
                                             )
                                         else Modifier
                                     ),
                                 ) {
-                                    OutlinedTextField(
-                                        value = state.prBody,
-                                        onValueChange = { viewModel.updatePrBody(it) },
-                                        label = { Text("PR Description") },
-                                        minLines = 3,
-                                        maxLines = 6,
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                                        ),
-                                        shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
-                                }
-
-                                // Attach Files button
-                                TooltipBox(
-                                    positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-                                    tooltip = { PlainTooltip { Text("Attach Files") } },
-                                    state = rememberTooltipState(),
-                                ) {
-                                    IconButton(
-                                        onClick = {
-                                            val chooser = JFileChooser().apply {
-                                                fileSelectionMode = JFileChooser.FILES_ONLY
-                                                isMultiSelectionEnabled = true
-                                                dialogTitle = "Select Images or Videos"
-                                                fileFilter = FileNameExtensionFilter(
-                                                    "Images & Videos",
-                                                    *AttachmentConfig.allowedExtensions.toTypedArray(),
-                                                )
-                                            }
-                                            if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-                                                viewModel.addAttachments(chooser.selectedFiles.toList())
-                                            }
-                                        },
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
                                     ) {
-                                        Icon(
-                                            Icons.Default.AttachFile,
-                                            contentDescription = "Attach Files",
-                                            tint = MaterialTheme.colorScheme.primary,
+                                        if (isDragHovering) {
+                                            Text(
+                                                "Drop files to attach them to this pull request",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                fontWeight = FontWeight.SemiBold,
+                                                modifier = Modifier.padding(horizontal = 4.dp),
+                                            )
+                                        }
+
+                                        OutlinedTextField(
+                                            value = state.prBody,
+                                            onValueChange = { viewModel.updatePrBody(it) },
+                                            label = { Text("PR Description") },
+                                            minLines = 3,
+                                            maxLines = 6,
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                                            ),
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.fillMaxWidth(),
                                         )
                                     }
                                 }
@@ -975,14 +1017,14 @@ fun MainScreen(
             )
         }
 
-        // File size error dialog
-        if (state.showFileSizeErrorDialog) {
+        // Attachment validation dialog
+        if (state.showAttachmentValidationDialog) {
             AlertDialog(
-                onDismissRequest = { viewModel.dismissFileSizeErrorDialog() },
-                title = { Text("File Too Large") },
-                text = { Text(state.fileSizeErrorMessage) },
+                onDismissRequest = { viewModel.dismissAttachmentValidationDialog() },
+                title = { Text(state.attachmentValidationTitle) },
+                text = { Text(state.attachmentValidationMessage) },
                 confirmButton = {
-                    Button(onClick = { viewModel.dismissFileSizeErrorDialog() }) {
+                    Button(onClick = { viewModel.dismissAttachmentValidationDialog() }) {
                         Text("OK")
                     }
                 },

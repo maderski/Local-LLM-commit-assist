@@ -47,13 +47,16 @@ kotlin {
     }
 }
 
-
-// Workaround for IntelliJ injecting a broken coroutine debug init script
-// See: https://youtrack.jetbrains.com/issue/KTIJ-29068
-gradle.taskGraph.whenReady {
-    allTasks.filterIsInstance<JavaExec>().forEach { task ->
-        task.jvmArgumentProviders.removeAll {
-            it.javaClass.name.contains("KotlinCoroutineJvmDebugArgumentsProvider")
+// IntelliJ may attach debugger init-script closures to jvmRun, which are not stable
+// across configuration-cache reloads. Keep the task runnable from the IDE by opting
+// it out of configuration cache and stripping the coroutine debug args provider early.
+tasks.configureEach {
+    if (name == "jvmRun") {
+        notCompatibleWithConfigurationCache("IntelliJ debugger init scripts attach non-cacheable closures to jvmRun")
+        if (this is JavaExec) {
+            jvmArgumentProviders.removeAll {
+                it.javaClass.name.contains("KotlinCoroutineJvmDebugArgumentsProvider")
+            }
         }
     }
 }
