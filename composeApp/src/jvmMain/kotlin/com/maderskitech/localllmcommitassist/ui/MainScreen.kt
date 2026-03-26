@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
@@ -46,9 +47,12 @@ import androidx.compose.ui.unit.sp
 import com.maderskitech.localllmcommitassist.data.AttachmentConfig
 import com.maderskitech.localllmcommitassist.viewmodel.MainViewModel
 import java.awt.Desktop
+import java.awt.Component
+import java.awt.Container
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
+import java.awt.image.BufferedImage
 import java.awt.dnd.DnDConstants
 import java.awt.dnd.DropTarget
 import java.awt.dnd.DropTargetAdapter
@@ -56,8 +60,11 @@ import java.awt.dnd.DropTargetDragEvent
 import java.awt.dnd.DropTargetDropEvent
 import java.awt.dnd.DropTargetEvent
 import java.io.File
+import java.util.UUID
 import java.net.URI
+import javax.imageio.ImageIO
 import javax.swing.JFileChooser
+import javax.swing.RootPaneContainer
 import javax.swing.filechooser.FileNameExtensionFilter
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -82,33 +89,58 @@ fun MainScreen(
     // Drag-and-drop support for PR attachments
     DisposableEffect(window, selectedTab) {
         if (selectedTab == 1) {
-            val dropTarget = DropTarget(window, DnDConstants.ACTION_COPY, object : DropTargetAdapter() {
+            val dropTargetListener = object : DropTargetAdapter() {
                 override fun dragEnter(dtde: DropTargetDragEvent) {
-                    isDragHovering = true
-                    dtde.acceptDrag(DnDConstants.ACTION_COPY)
+                    if (dtde.isFileDrag()) {
+                        isDragHovering = true
+                        dtde.acceptDrag(DnDConstants.ACTION_COPY)
+                    } else {
+                        dtde.rejectDrag()
+                    }
                 }
+
+                override fun dragOver(dtde: DropTargetDragEvent) {
+                    if (dtde.isFileDrag()) {
+                        isDragHovering = true
+                        dtde.acceptDrag(DnDConstants.ACTION_COPY)
+                    } else {
+                        isDragHovering = false
+                        dtde.rejectDrag()
+                    }
+                }
+
                 override fun dragExit(dte: DropTargetEvent) {
                     isDragHovering = false
                 }
+
                 override fun drop(dtde: DropTargetDropEvent) {
                     isDragHovering = false
-                    dtde.acceptDrop(DnDConstants.ACTION_COPY)
                     val transferable = dtde.transferable
-                    if (transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
-                        @Suppress("UNCHECKED_CAST")
-                        val files = transferable.getTransferData(DataFlavor.javaFileListFlavor) as List<File>
-                        viewModel.addAttachments(files)
+                    if (!transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+                        dtde.rejectDrop()
+                        dtde.dropComplete(false)
+                        return
                     }
-                    dtde.dropComplete(true)
+                    dtde.acceptDrop(DnDConstants.ACTION_COPY)
+                    runCatching {
+                        @Suppress("UNCHECKED_CAST")
+                        transferable.getTransferData(DataFlavor.javaFileListFlavor) as List<File>
+                    }.onSuccess { files ->
+                        viewModel.addAttachments(files)
+                        dtde.dropComplete(true)
+                    }.onFailure {
+                        dtde.dropComplete(false)
+                    }
                 }
-            })
-            window.dropTarget = dropTarget
+            }
+            val dropTargets = installFileDropTargets(window, dropTargetListener)
             onDispose {
-                window.dropTarget = null
+                dropTargets.forEach { (component, previousDropTarget) ->
+                    component.dropTarget = previousDropTarget
+                }
                 isDragHovering = false
             }
         } else {
-            window.dropTarget = null
             isDragHovering = false
             onDispose { }
         }
@@ -738,32 +770,53 @@ fun MainScreen(
                                         )
                                     }
 
-                                    TooltipBox(
-                                        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-                                        tooltip = { PlainTooltip { Text("Attach Files") } },
-                                        state = rememberTooltipState(),
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
                                     ) {
-                                        IconButton(
-                                            onClick = {
-                                                val chooser = JFileChooser().apply {
-                                                    fileSelectionMode = JFileChooser.FILES_ONLY
-                                                    isMultiSelectionEnabled = true
-                                                    dialogTitle = "Select Images or Videos"
-                                                    fileFilter = FileNameExtensionFilter(
-                                                        "Images & Videos",
-                                                        *AttachmentConfig.allowedExtensions.toTypedArray(),
-                                                    )
-                                                }
-                                                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-                                                    viewModel.addAttachments(chooser.selectedFiles.toList())
-                                                }
-                                            },
+                                        TooltipBox(
+                                            positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                                            tooltip = { PlainTooltip { Text("Paste Image") } },
+                                            state = rememberTooltipState(),
                                         ) {
-                                            Icon(
-                                                Icons.Default.AttachFile,
-                                                contentDescription = "Attach Files",
-                                                tint = MaterialTheme.colorScheme.primary,
-                                            )
+                                            IconButton(
+                                                onClick = { pasteClipboardAttachment(viewModel) },
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.ContentPaste,
+                                                    contentDescription = "Paste Image",
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                )
+                                            }
+                                        }
+
+                                        TooltipBox(
+                                            positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                                            tooltip = { PlainTooltip { Text("Attach Files") } },
+                                            state = rememberTooltipState(),
+                                        ) {
+                                            IconButton(
+                                                onClick = {
+                                                    val chooser = JFileChooser().apply {
+                                                        fileSelectionMode = JFileChooser.FILES_ONLY
+                                                        isMultiSelectionEnabled = true
+                                                        dialogTitle = "Select Images or Videos"
+                                                        fileFilter = FileNameExtensionFilter(
+                                                            "Images & Videos",
+                                                            *AttachmentConfig.allowedExtensions.toTypedArray(),
+                                                        )
+                                                    }
+                                                    if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                                                        viewModel.addAttachments(chooser.selectedFiles.toList())
+                                                    }
+                                                },
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.AttachFile,
+                                                    contentDescription = "Attach Files",
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -1112,6 +1165,86 @@ fun MainScreen(
             }
         }
     }
+}
+
+private fun installFileDropTargets(window: java.awt.Window, listener: DropTargetAdapter): List<Pair<Component, DropTarget?>> {
+    val components = linkedSetOf<Component>()
+    components += window
+    if (window is RootPaneContainer) {
+        components += window.rootPane
+        components += window.layeredPane
+        components += window.glassPane
+        components += window.contentPane
+        collectChildComponents(window.contentPane, components)
+    } else if (window is Container) {
+        collectChildComponents(window, components)
+    }
+
+    return components.map { component ->
+        val previousDropTarget = component.dropTarget
+        component.dropTarget = DropTarget(component, DnDConstants.ACTION_COPY, listener, true)
+        component to previousDropTarget
+    }
+}
+
+private fun collectChildComponents(container: Container, components: MutableSet<Component>) {
+    container.components.forEach { component ->
+        components += component
+        if (component is Container) {
+            collectChildComponents(component, components)
+        }
+    }
+}
+
+private fun DropTargetDragEvent.isFileDrag(): Boolean =
+    transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)
+
+private fun pasteClipboardAttachment(viewModel: MainViewModel) {
+    val clipboard = runCatching { Toolkit.getDefaultToolkit().systemClipboard }.getOrNull()
+    if (clipboard == null) {
+        viewModel.showAttachmentStatus("Clipboard is not available.", isError = true)
+        return
+    }
+
+    val transferable = runCatching { clipboard.getContents(null) }.getOrNull()
+    if (transferable == null) {
+        viewModel.showAttachmentStatus("Clipboard is empty.", isError = true)
+        return
+    }
+
+    when {
+        transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor) -> {
+            runCatching {
+                @Suppress("UNCHECKED_CAST")
+                transferable.getTransferData(DataFlavor.javaFileListFlavor) as List<File>
+            }.onSuccess { files ->
+                viewModel.addAttachments(files)
+            }.onFailure {
+                viewModel.showAttachmentStatus("Could not read files from the clipboard.", isError = true)
+            }
+        }
+
+        transferable.isDataFlavorSupported(DataFlavor.imageFlavor) -> {
+            runCatching {
+                val image = transferable.getTransferData(DataFlavor.imageFlavor) as? BufferedImage
+                    ?: error("Clipboard image format is not supported")
+                createClipboardImageTempFile(image)
+            }.onSuccess { file ->
+                viewModel.addAttachments(listOf(file))
+            }.onFailure {
+                viewModel.showAttachmentStatus("Clipboard does not contain a supported image.", isError = true)
+            }
+        }
+
+        else -> viewModel.showAttachmentStatus("Clipboard does not contain an image or file attachment.", isError = true)
+    }
+}
+
+private fun createClipboardImageTempFile(image: BufferedImage): File {
+    val tempFile = File(System.getProperty("java.io.tmpdir"), "pr-clipboard-${UUID.randomUUID()}.png")
+    ImageIO.write(image, "png", tempFile)
+    tempFile.deleteOnExit()
+    return tempFile
 }
 
 @Composable

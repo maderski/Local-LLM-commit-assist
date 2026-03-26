@@ -585,6 +585,13 @@ class MainViewModel(
         )
     }
 
+    fun showAttachmentStatus(message: String, isError: Boolean) {
+        _uiState.value = _uiState.value.copy(
+            statusMessage = message,
+            isError = isError,
+        )
+    }
+
     fun dismissAttachmentValidationDialog() {
         _uiState.value = _uiState.value.copy(
             showAttachmentValidationDialog = false,
