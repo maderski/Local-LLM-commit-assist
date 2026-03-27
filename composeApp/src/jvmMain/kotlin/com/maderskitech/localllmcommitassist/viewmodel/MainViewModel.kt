@@ -78,6 +78,7 @@ class MainViewModel(
 
     fun selectProject(path: String) {
         settingsRepository.setSelectedProject(path)
+        deleteTempAttachmentFiles(_uiState.value.prAttachments)
         _uiState.value = _uiState.value.copy(
             repoPath = path,
             currentBranch = "",
@@ -280,6 +281,7 @@ class MainViewModel(
         }
         settingsRepository.addProject(path)
         settingsRepository.setSelectedProject(path)
+        deleteTempAttachmentFiles(_uiState.value.prAttachments)
         _uiState.value = _uiState.value.copy(
             savedProjects = settingsRepository.getSavedProjects(),
             repoPath = path,
@@ -308,6 +310,7 @@ class MainViewModel(
         val projects = settingsRepository.getSavedProjects()
         val newSelected = if (_uiState.value.repoPath == path) projects.firstOrNull().orEmpty() else _uiState.value.repoPath
         settingsRepository.setSelectedProject(newSelected)
+        deleteTempAttachmentFiles(_uiState.value.prAttachments)
         _uiState.value = _uiState.value.copy(
             savedProjects = projects,
             repoPath = newSelected,
@@ -508,7 +511,7 @@ class MainViewModel(
         }
     }
 
-    fun addAttachments(files: List<File>) {
+    fun addAttachments(files: List<File>, isTempFile: Boolean = false) {
         val platform = settingsRepository.getPrPlatform()
         val maxSize = AttachmentConfig.maxSizeForPlatform(platform)
         val maxLabel = AttachmentConfig.maxSizeLabelForPlatform(platform)
@@ -529,7 +532,7 @@ class MainViewModel(
                     oversizedFiles += "${file.name} ($sizeMb MB)"
                 }
                 else -> {
-                    addedAttachments += PrAttachment(file = file)
+                    addedAttachments += PrAttachment(file = file, isTempFile = isTempFile)
                     existingPaths += file.absolutePath
                 }
             }
@@ -586,9 +589,15 @@ class MainViewModel(
     }
 
     fun removeAttachment(id: String) {
+        val attachment = _uiState.value.prAttachments.find { it.id == id }
+        if (attachment?.isTempFile == true) attachment.file.delete()
         _uiState.value = _uiState.value.copy(
             prAttachments = _uiState.value.prAttachments.filter { it.id != id },
         )
+    }
+
+    private fun deleteTempAttachmentFiles(attachments: List<PrAttachment>) {
+        attachments.filter { it.isTempFile }.forEach { it.file.delete() }
     }
 
     fun showAttachmentStatus(message: String, isError: Boolean) {
@@ -765,6 +774,7 @@ class MainViewModel(
                         } else {
                             "Pull request created successfully!"
                         }
+                        deleteTempAttachmentFiles(_uiState.value.prAttachments)
                         _uiState.value = _uiState.value.copy(
                             prUrl = result.url,
                             isLoading = false,
@@ -813,6 +823,7 @@ class MainViewModel(
                         workItemIds = workItemIds,
                         tags = tags,
                     ).onSuccess { url ->
+                        deleteTempAttachmentFiles(_uiState.value.prAttachments)
                         _uiState.value = _uiState.value.copy(
                             prUrl = url,
                             isLoading = false,

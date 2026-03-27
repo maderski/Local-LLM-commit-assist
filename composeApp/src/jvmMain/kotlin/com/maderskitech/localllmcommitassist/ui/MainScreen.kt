@@ -1231,7 +1231,7 @@ private fun pasteClipboardAttachment(viewModel: MainViewModel) {
                     ?: error("Clipboard image format is not supported")
                 createClipboardImageTempFile(image)
             }.onSuccess { file ->
-                viewModel.addAttachments(listOf(file))
+                viewModel.addAttachments(listOf(file), isTempFile = true)
             }.onFailure {
                 viewModel.showAttachmentStatus("Clipboard does not contain a supported image.", isError = true)
             }
@@ -1244,7 +1244,6 @@ private fun pasteClipboardAttachment(viewModel: MainViewModel) {
 private fun createClipboardImageTempFile(image: Image): File {
     val tempFile = File(System.getProperty("java.io.tmpdir"), "pr-clipboard-${UUID.randomUUID()}.png")
     ImageIO.write(image.toBufferedImage(), "png", tempFile)
-    tempFile.deleteOnExit()
     return tempFile
 }
 
