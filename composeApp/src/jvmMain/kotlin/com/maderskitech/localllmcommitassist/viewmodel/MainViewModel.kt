@@ -525,11 +525,18 @@ class MainViewModel(
         for (file in files) {
             val extension = file.extension.lowercase()
             when {
-                extension !in AttachmentConfig.allowedExtensions -> unsupportedFiles += file.name
-                file.absolutePath in existingPaths -> duplicateFiles += file.name
+                extension !in AttachmentConfig.allowedExtensions -> {
+                    unsupportedFiles += file.name
+                    if (isTempFile) file.delete()
+                }
+                file.absolutePath in existingPaths -> {
+                    duplicateFiles += file.name
+                    if (isTempFile) file.delete()
+                }
                 file.length() > maxSize -> {
                     val sizeMb = "%.1f".format(file.length().toDouble() / (1024 * 1024))
                     oversizedFiles += "${file.name} ($sizeMb MB)"
+                    if (isTempFile) file.delete()
                 }
                 else -> {
                     addedAttachments += PrAttachment(file = file, isTempFile = isTempFile)
