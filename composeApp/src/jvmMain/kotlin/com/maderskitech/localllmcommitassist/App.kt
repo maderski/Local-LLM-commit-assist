@@ -46,7 +46,10 @@ fun App(window: Window) {
                 )
                 Screen.Settings -> SettingsScreen(
                     settingsRepository = settingsRepository,
-                    onBack = { currentScreen = Screen.Main },
+                    onBack = {
+                        mainViewModel.refreshSettings()
+                        currentScreen = Screen.Main
+                    },
                 )
             }
         }

@@ -121,6 +121,12 @@ class MainViewModel(
         loadBranches(path)
     }
 
+    fun refreshSettings() {
+        _uiState.value = _uiState.value.copy(
+            prPlatform = settingsRepository.getPrPlatform(),
+        )
+    }
+
     private fun loadBranches(path: String) {
         if (path.isBlank()) return
         viewModelScope.launch(Dispatchers.IO) {
