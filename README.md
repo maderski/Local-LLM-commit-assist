@@ -18,6 +18,8 @@ A desktop app that connects to a local LLM (via its OpenAI-compatible API) to au
 - **AI-generated PR descriptions** — Generates a title, summary, and bullet-point list of changes from your commit history
 - **Target branch selection** — Pick the target branch from a dropdown of your local branches
 - **PR title & description editing** — Review and edit the generated content before creating the PR
+- **PR media attachments** — Drag and drop images or videos onto the PR tab, or pick them from a file dialog
+- **Provider-aware attachment limits** — Enforces GitHub's `10 MB` limit and Azure DevOps' `25 MB` limit before PR creation
 - **Multi-platform support** — Create pull requests on **GitHub** or **Azure DevOps**
 - **PR URL link** — Get a clickable link to your newly created PR
 
@@ -58,8 +60,10 @@ A desktop app that connects to a local LLM (via its OpenAI-compatible API) to au
 2. Select the target branch from the dropdown
 3. Click **Generate PR Description** — the app analyzes your commits and generates a title and description
 4. Review and edit the title and description as needed
-5. Click **Create PR** to create the pull request on your configured platform
-6. Click the resulting PR URL to view it in your browser
+5. Optionally drag images/videos onto the PR tab or click the attach button to add them
+6. The app accepts `png`, `jpg`, `jpeg`, `gif`, `webp`, `mp4`, and `mov`, and validates the file size against your configured platform limit
+7. Click **Create PR** to create the pull request on your configured platform
+8. Click the resulting PR URL to view it in your browser
 
 > **Note:** To create PRs, go to **Settings** and configure your PR platform (GitHub or Azure DevOps) and enter your personal access token.
 

@@ -24,6 +24,7 @@ data class SelectableFile(
 data class MainUiState(
     val savedProjects: List<String> = emptyList(),
     val repoPath: String = "",
+    val prPlatform: String = "github",
     val currentBranch: String = "",
     val availableBranches: List<String> = emptyList(),
     val prTargetBranch: String = "",
@@ -44,8 +45,9 @@ data class MainUiState(
     val pendingSwitchBranch: String = "",
     val isPendingBranchCreate: Boolean = false,
     val prAttachments: List<PrAttachment> = emptyList(),
-    val showFileSizeErrorDialog: Boolean = false,
-    val fileSizeErrorMessage: String = "",
+    val showAttachmentValidationDialog: Boolean = false,
+    val attachmentValidationTitle: String = "",
+    val attachmentValidationMessage: String = "",
     val showPublishBranchDialog: Boolean = false,
 )
 
@@ -60,6 +62,7 @@ class MainViewModel(
         MainUiState(
             savedProjects = settingsRepository.getSavedProjects(),
             repoPath = settingsRepository.getSelectedProject(),
+            prPlatform = settingsRepository.getPrPlatform(),
             prTargetBranch = settingsRepository.getPrTargetBranch(),
         )
     )
@@ -75,6 +78,7 @@ class MainViewModel(
 
     fun selectProject(path: String) {
         settingsRepository.setSelectedProject(path)
+        deleteTempAttachmentFiles(_uiState.value.prAttachments)
         _uiState.value = _uiState.value.copy(
             repoPath = path,
             currentBranch = "",
@@ -116,6 +120,12 @@ class MainViewModel(
         val path = _uiState.value.repoPath
         loadCurrentBranch(path)
         loadBranches(path)
+    }
+
+    fun refreshSettings() {
+        _uiState.value = _uiState.value.copy(
+            prPlatform = settingsRepository.getPrPlatform(),
+        )
     }
 
     private fun loadBranches(path: String) {
@@ -271,6 +281,7 @@ class MainViewModel(
         }
         settingsRepository.addProject(path)
         settingsRepository.setSelectedProject(path)
+        deleteTempAttachmentFiles(_uiState.value.prAttachments)
         _uiState.value = _uiState.value.copy(
             savedProjects = settingsRepository.getSavedProjects(),
             repoPath = path,
@@ -299,6 +310,7 @@ class MainViewModel(
         val projects = settingsRepository.getSavedProjects()
         val newSelected = if (_uiState.value.repoPath == path) projects.firstOrNull().orEmpty() else _uiState.value.repoPath
         settingsRepository.setSelectedProject(newSelected)
+        deleteTempAttachmentFiles(_uiState.value.prAttachments)
         _uiState.value = _uiState.value.copy(
             savedProjects = projects,
             repoPath = newSelected,
@@ -499,38 +511,115 @@ class MainViewModel(
         }
     }
 
-    fun addAttachments(files: List<File>) {
+    fun addAttachments(files: List<File>, isTempFile: Boolean = false) {
         val platform = settingsRepository.getPrPlatform()
         val maxSize = AttachmentConfig.maxSizeForPlatform(platform)
         val maxLabel = AttachmentConfig.maxSizeLabelForPlatform(platform)
-        val existingPaths = _uiState.value.prAttachments.map { it.file.absolutePath }.toSet()
+        val platformLabel = if (platform == "azure_devops") "Azure DevOps" else "GitHub"
+        val existingPaths = _uiState.value.prAttachments.map { it.file.absolutePath }.toMutableSet()
+        val addedAttachments = mutableListOf<PrAttachment>()
+        val unsupportedFiles = mutableListOf<String>()
+        val duplicateFiles = mutableListOf<String>()
+        val oversizedFiles = mutableListOf<String>()
 
         for (file in files) {
-            if (file.extension.lowercase() !in AttachmentConfig.allowedExtensions) continue
-            if (file.absolutePath in existingPaths) continue
-            if (file.length() > maxSize) {
-                val sizeMb = "%.1f".format(file.length().toDouble() / (1024 * 1024))
-                _uiState.value = _uiState.value.copy(
-                    showFileSizeErrorDialog = true,
-                    fileSizeErrorMessage = "'${file.name}' ($sizeMb MB) exceeds the $maxLabel limit for ${if (platform == "azure_devops") "Azure DevOps" else "GitHub"}.",
-                )
-                return
+            val extension = file.extension.lowercase()
+            when {
+                extension !in AttachmentConfig.allowedExtensions -> {
+                    unsupportedFiles += file.name
+                    if (isTempFile) file.delete()
+                }
+                file.absolutePath in existingPaths -> {
+                    duplicateFiles += file.name
+                    if (isTempFile) file.delete()
+                }
+                file.length() > maxSize -> {
+                    val sizeMb = "%.1f".format(file.length().toDouble() / (1024 * 1024))
+                    oversizedFiles += "${file.name} ($sizeMb MB)"
+                    if (isTempFile) file.delete()
+                }
+                else -> {
+                    addedAttachments += PrAttachment(file = file, isTempFile = isTempFile)
+                    existingPaths += file.absolutePath
+                }
             }
-            val attachment = PrAttachment(file = file)
+        }
+
+        if (addedAttachments.isNotEmpty()) {
+            val updatedAttachments = _uiState.value.prAttachments + addedAttachments
+            val addedCount = addedAttachments.size
+            val statusMessage = if (unsupportedFiles.isEmpty() && duplicateFiles.isEmpty() && oversizedFiles.isEmpty()) {
+                if (addedCount == 1) {
+                    "Added attachment '${addedAttachments.first().name}'."
+                } else {
+                    "Added $addedCount attachments."
+                }
+            } else {
+                "Added $addedCount attachment${if (addedCount == 1) "" else "s"} with some files skipped."
+            }
             _uiState.value = _uiState.value.copy(
-                prAttachments = _uiState.value.prAttachments + attachment,
+                prAttachments = updatedAttachments,
+                statusMessage = statusMessage,
+                isError = false,
+            )
+        }
+
+        if (unsupportedFiles.isNotEmpty() || duplicateFiles.isNotEmpty() || oversizedFiles.isNotEmpty()) {
+            val messageParts = buildList {
+                if (unsupportedFiles.isNotEmpty()) {
+                    add("Unsupported files: ${unsupportedFiles.joinToString(", ")}. Supported types: ${AttachmentConfig.allowedExtensions.sorted().joinToString(", ")}.")
+                }
+                if (duplicateFiles.isNotEmpty()) {
+                    add("Already attached: ${duplicateFiles.joinToString(", ")}.")
+                }
+                if (oversizedFiles.isNotEmpty()) {
+                    add("Over $maxLabel for $platformLabel: ${oversizedFiles.joinToString(", ")}.")
+                }
+            }
+
+            _uiState.value = _uiState.value.copy(
+                showAttachmentValidationDialog = true,
+                attachmentValidationTitle = if (oversizedFiles.isNotEmpty() && unsupportedFiles.isEmpty() && duplicateFiles.isEmpty()) {
+                    "Attachment Too Large"
+                } else {
+                    "Attachment Issues"
+                },
+                attachmentValidationMessage = messageParts.joinToString("\n\n"),
+                isError = addedAttachments.isEmpty(),
+                statusMessage = if (addedAttachments.isEmpty()) {
+                    "No attachments were added."
+                } else {
+                    _uiState.value.statusMessage
+                },
             )
         }
     }
 
     fun removeAttachment(id: String) {
+        val attachment = _uiState.value.prAttachments.find { it.id == id }
+        if (attachment?.isTempFile == true) attachment.file.delete()
         _uiState.value = _uiState.value.copy(
             prAttachments = _uiState.value.prAttachments.filter { it.id != id },
         )
     }
 
-    fun dismissFileSizeErrorDialog() {
-        _uiState.value = _uiState.value.copy(showFileSizeErrorDialog = false, fileSizeErrorMessage = "")
+    private fun deleteTempAttachmentFiles(attachments: List<PrAttachment>) {
+        attachments.filter { it.isTempFile }.forEach { it.file.delete() }
+    }
+
+    fun showAttachmentStatus(message: String, isError: Boolean) {
+        _uiState.value = _uiState.value.copy(
+            statusMessage = message,
+            isError = isError,
+        )
+    }
+
+    fun dismissAttachmentValidationDialog() {
+        _uiState.value = _uiState.value.copy(
+            showAttachmentValidationDialog = false,
+            attachmentValidationTitle = "",
+            attachmentValidationMessage = "",
+        )
     }
 
     fun dismissPublishBranchDialog() {
@@ -692,6 +781,7 @@ class MainViewModel(
                         } else {
                             "Pull request created successfully!"
                         }
+                        deleteTempAttachmentFiles(_uiState.value.prAttachments)
                         _uiState.value = _uiState.value.copy(
                             prUrl = result.url,
                             isLoading = false,
@@ -740,6 +830,7 @@ class MainViewModel(
                         workItemIds = workItemIds,
                         tags = tags,
                     ).onSuccess { url ->
+                        deleteTempAttachmentFiles(_uiState.value.prAttachments)
                         _uiState.value = _uiState.value.copy(
                             prUrl = url,
                             isLoading = false,
@@ -976,19 +1067,56 @@ class MainViewModel(
                             }
                             .onFailure { e ->
                                 val isNoUpstream = e.message?.contains("has no upstream branch") == true
-                                _uiState.value = _uiState.value.copy(
-                                    isLoading = false,
-                                    changedFiles = emptyList(),
-                                    fileSummary = "",
-                                    fullDiff = "",
-                                    commitSummary = "",
-                                    commitDescription = "",
-                                    statusMessage = if (isNoUpstream) "Committed successfully. Branch has not been published yet."
-                                        else "Committed but push failed: ${e.message}",
-                                    isError = !isNoUpstream,
-                                    showPublishBranchDialog = isNoUpstream,
-                                )
-                                loadChangedFiles()
+                                val isNonFastForward = e.message?.contains("non-fast-forward") == true ||
+                                    e.message?.contains("rejected") == true
+                                if (isNonFastForward) {
+                                    _uiState.value = _uiState.value.copy(statusMessage = "Push rejected, rebasing on remote changes...")
+                                    gitService.pullRebase(state.repoPath.trim())
+                                        .onSuccess {
+                                            gitService.push(state.repoPath.trim())
+                                                .onSuccess { pushOutput ->
+                                                    _uiState.value = _uiState.value.copy(
+                                                        isLoading = false,
+                                                        changedFiles = emptyList(),
+                                                        fileSummary = "",
+                                                        fullDiff = "",
+                                                        commitSummary = "",
+                                                        commitDescription = "",
+                                                        statusMessage = "Committed and pushed successfully (after rebase)!\n$commitOutput\n$pushOutput",
+                                                        isError = false,
+                                                    )
+                                                    loadChangedFiles()
+                                                }
+                                                .onFailure { pushError ->
+                                                    _uiState.value = _uiState.value.copy(
+                                                        isLoading = false,
+                                                        statusMessage = "Committed but push failed after rebase: ${pushError.message}",
+                                                        isError = true,
+                                                    )
+                                                }
+                                        }
+                                        .onFailure { rebaseError ->
+                                            _uiState.value = _uiState.value.copy(
+                                                isLoading = false,
+                                                statusMessage = "Committed but rebase failed: ${rebaseError.message}",
+                                                isError = true,
+                                            )
+                                        }
+                                } else {
+                                    _uiState.value = _uiState.value.copy(
+                                        isLoading = false,
+                                        changedFiles = emptyList(),
+                                        fileSummary = "",
+                                        fullDiff = "",
+                                        commitSummary = "",
+                                        commitDescription = "",
+                                        statusMessage = if (isNoUpstream) "Committed successfully. Branch has not been published yet."
+                                            else "Committed but push failed: ${e.message}",
+                                        isError = !isNoUpstream,
+                                        showPublishBranchDialog = isNoUpstream,
+                                    )
+                                    loadChangedFiles()
+                                }
                             }
                     } else {
                         _uiState.value = _uiState.value.copy(

@@ -7,7 +7,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,6 +23,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
@@ -32,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -43,9 +47,13 @@ import androidx.compose.ui.unit.sp
 import com.maderskitech.localllmcommitassist.data.AttachmentConfig
 import com.maderskitech.localllmcommitassist.viewmodel.MainViewModel
 import java.awt.Desktop
+import java.awt.Component
+import java.awt.Container
+import java.awt.Image
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
+import java.awt.image.BufferedImage
 import java.awt.dnd.DnDConstants
 import java.awt.dnd.DropTarget
 import java.awt.dnd.DropTargetAdapter
@@ -53,8 +61,11 @@ import java.awt.dnd.DropTargetDragEvent
 import java.awt.dnd.DropTargetDropEvent
 import java.awt.dnd.DropTargetEvent
 import java.io.File
+import java.util.UUID
 import java.net.URI
+import javax.imageio.ImageIO
 import javax.swing.JFileChooser
+import javax.swing.RootPaneContainer
 import javax.swing.filechooser.FileNameExtensionFilter
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,33 +90,58 @@ fun MainScreen(
     // Drag-and-drop support for PR attachments
     DisposableEffect(window, selectedTab) {
         if (selectedTab == 1) {
-            val dropTarget = DropTarget(window, DnDConstants.ACTION_COPY, object : DropTargetAdapter() {
+            val dropTargetListener = object : DropTargetAdapter() {
                 override fun dragEnter(dtde: DropTargetDragEvent) {
-                    isDragHovering = true
-                    dtde.acceptDrag(DnDConstants.ACTION_COPY)
+                    if (dtde.isFileDrag()) {
+                        isDragHovering = true
+                        dtde.acceptDrag(DnDConstants.ACTION_COPY)
+                    } else {
+                        dtde.rejectDrag()
+                    }
                 }
+
+                override fun dragOver(dtde: DropTargetDragEvent) {
+                    if (dtde.isFileDrag()) {
+                        isDragHovering = true
+                        dtde.acceptDrag(DnDConstants.ACTION_COPY)
+                    } else {
+                        isDragHovering = false
+                        dtde.rejectDrag()
+                    }
+                }
+
                 override fun dragExit(dte: DropTargetEvent) {
                     isDragHovering = false
                 }
+
                 override fun drop(dtde: DropTargetDropEvent) {
                     isDragHovering = false
-                    dtde.acceptDrop(DnDConstants.ACTION_COPY)
                     val transferable = dtde.transferable
-                    if (transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
-                        @Suppress("UNCHECKED_CAST")
-                        val files = transferable.getTransferData(DataFlavor.javaFileListFlavor) as List<File>
-                        viewModel.addAttachments(files)
+                    if (!transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+                        dtde.rejectDrop()
+                        dtde.dropComplete(false)
+                        return
                     }
-                    dtde.dropComplete(true)
+                    dtde.acceptDrop(DnDConstants.ACTION_COPY)
+                    runCatching {
+                        @Suppress("UNCHECKED_CAST")
+                        transferable.getTransferData(DataFlavor.javaFileListFlavor) as List<File>
+                    }.onSuccess { files ->
+                        viewModel.addAttachments(files)
+                        dtde.dropComplete(true)
+                    }.onFailure {
+                        dtde.dropComplete(false)
+                    }
                 }
-            })
-            window.dropTarget = dropTarget
+            }
+            val dropTargets = installFileDropTargets(window, dropTargetListener)
             onDispose {
-                window.dropTarget = null
+                dropTargets.forEach { (component, previousDropTarget) ->
+                    component.dropTarget = previousDropTarget
+                }
                 isDragHovering = false
             }
         } else {
-            window.dropTarget = null
             isDragHovering = false
             onDispose { }
         }
@@ -620,6 +656,8 @@ fun MainScreen(
                 }
             }
             1 -> {
+                val platformName = if (state.prPlatform == "azure_devops") "Azure DevOps" else "GitHub"
+                val platformLimit = AttachmentConfig.maxSizeLabelForPlatform(state.prPlatform)
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     // Pull Request card
                     Card(
@@ -708,96 +746,173 @@ fun MainScreen(
                                 modifier = Modifier.fillMaxWidth(),
                             )
 
-                            // PR Description with drop zone indicator
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                Box(
-                                    modifier = Modifier.weight(1f).then(
-                                        if (isDragHovering) Modifier
-                                            .border(
-                                                BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
-                                                RoundedCornerShape(8.dp),
-                                            )
-                                            .background(
-                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
-                                                RoundedCornerShape(8.dp),
-                                            )
-                                        else Modifier
-                                    ),
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    OutlinedTextField(
-                                        value = state.prBody,
-                                        onValueChange = { viewModel.updatePrBody(it) },
-                                        label = { Text("PR Description") },
-                                        minLines = 3,
-                                        maxLines = 6,
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                                        ),
-                                        shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier.fillMaxWidth(),
-                                    )
-                                }
-
-                                // Attach Files button
-                                TooltipBox(
-                                    positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-                                    tooltip = { PlainTooltip { Text("Attach Files") } },
-                                    state = rememberTooltipState(),
-                                ) {
-                                    IconButton(
-                                        onClick = {
-                                            val chooser = JFileChooser().apply {
-                                                fileSelectionMode = JFileChooser.FILES_ONLY
-                                                isMultiSelectionEnabled = true
-                                                dialogTitle = "Select Images or Videos"
-                                                fileFilter = FileNameExtensionFilter(
-                                                    "Images & Videos",
-                                                    *AttachmentConfig.allowedExtensions.toTypedArray(),
-                                                )
-                                            }
-                                            if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-                                                viewModel.addAttachments(chooser.selectedFiles.toList())
-                                            }
-                                        },
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(2.dp),
                                     ) {
-                                        Icon(
-                                            Icons.Default.AttachFile,
-                                            contentDescription = "Attach Files",
-                                            tint = MaterialTheme.colorScheme.primary,
+                                        Text(
+                                            "Attachments (${state.prAttachments.size})",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                        Text(
+                                            "Drag images or videos here, or use the attach button. Supported types: ${AttachmentConfig.allowedExtensions.sorted().joinToString(", ")}. Current limit for $platformName: $platformLimit.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                     }
-                                }
-                            }
 
-                            // Attachment chips
-                            if (state.prAttachments.isNotEmpty()) {
-                                @OptIn(ExperimentalLayoutApi::class)
-                                FlowRow(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        TooltipBox(
+                                            positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                                            tooltip = { PlainTooltip { Text("Paste Image") } },
+                                            state = rememberTooltipState(),
+                                        ) {
+                                            IconButton(
+                                                onClick = { pasteClipboardAttachment(viewModel) },
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.ContentPaste,
+                                                    contentDescription = "Paste Image",
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                )
+                                            }
+                                        }
+
+                                        TooltipBox(
+                                            positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                                            tooltip = { PlainTooltip { Text("Attach Files") } },
+                                            state = rememberTooltipState(),
+                                        ) {
+                                            IconButton(
+                                                onClick = {
+                                                    val chooser = JFileChooser().apply {
+                                                        fileSelectionMode = JFileChooser.FILES_ONLY
+                                                        isMultiSelectionEnabled = true
+                                                        dialogTitle = "Select Images or Videos"
+                                                        fileFilter = FileNameExtensionFilter(
+                                                            "Images & Videos",
+                                                            *AttachmentConfig.allowedExtensions.toTypedArray(),
+                                                        )
+                                                    }
+                                                    if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                                                        viewModel.addAttachments(chooser.selectedFiles.toList())
+                                                    }
+                                                },
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.AttachFile,
+                                                    contentDescription = "Attach Files",
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(
+                                            BorderStroke(
+                                                if (isDragHovering) 2.dp else 1.dp,
+                                                if (isDragHovering) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                                            ),
+                                            RoundedCornerShape(12.dp),
+                                        )
+                                        .background(
+                                            if (isDragHovering) {
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                                            } else {
+                                                MaterialTheme.colorScheme.surfaceContainerLow
+                                            },
+                                            RoundedCornerShape(12.dp),
+                                        ),
                                 ) {
-                                    state.prAttachments.forEach { attachment ->
-                                        val sizeMb = "%.1f".format(attachment.sizeBytes.toDouble() / (1024 * 1024))
-                                        InputChip(
-                                            selected = false,
-                                            onClick = {},
-                                            label = { Text("${attachment.name} ($sizeMb MB)", style = MaterialTheme.typography.bodySmall) },
-                                            trailingIcon = {
-                                                IconButton(
-                                                    onClick = { viewModel.removeAttachment(attachment.id) },
-                                                    modifier = Modifier.size(18.dp),
-                                                ) {
-                                                    Icon(
-                                                        Icons.Default.Close,
-                                                        contentDescription = "Remove ${attachment.name}",
-                                                        modifier = Modifier.size(14.dp),
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        if (isDragHovering) {
+                                            Text(
+                                                "Drop files to attach them to this pull request",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                fontWeight = FontWeight.SemiBold,
+                                                modifier = Modifier.padding(horizontal = 4.dp),
+                                            )
+                                        }
+
+                                        if (state.prAttachments.isEmpty()) {
+                                            Text(
+                                                "No attachments added yet.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(horizontal = 4.dp),
+                                            )
+                                        } else {
+                                            Text(
+                                                "${state.prAttachments.size} attachment${if (state.prAttachments.size == 1) "" else "s"} ready to upload with this PR.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.tertiary,
+                                                fontWeight = FontWeight.Medium,
+                                                modifier = Modifier.padding(horizontal = 4.dp),
+                                            )
+
+                                            @OptIn(ExperimentalLayoutApi::class)
+                                            FlowRow(
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                            ) {
+                                                state.prAttachments.forEach { attachment ->
+                                                    val sizeMb = "%.1f".format(attachment.sizeBytes.toDouble() / (1024 * 1024))
+                                                    InputChip(
+                                                        selected = false,
+                                                        onClick = {},
+                                                        label = { Text("${attachment.name} ($sizeMb MB)", style = MaterialTheme.typography.bodySmall) },
+                                                        trailingIcon = {
+                                                            IconButton(
+                                                                onClick = { viewModel.removeAttachment(attachment.id) },
+                                                                modifier = Modifier.size(18.dp),
+                                                            ) {
+                                                                Icon(
+                                                                    Icons.Default.Close,
+                                                                    contentDescription = "Remove ${attachment.name}",
+                                                                    modifier = Modifier.size(14.dp),
+                                                                )
+                                                            }
+                                                        },
                                                     )
                                                 }
-                                            },
+                                            }
+                                        }
+
+                                        OutlinedTextField(
+                                            value = state.prBody,
+                                            onValueChange = { viewModel.updatePrBody(it) },
+                                            label = { Text("PR Description") },
+                                            minLines = 3,
+                                            maxLines = 6,
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                                            ),
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.fillMaxWidth(),
                                         )
                                     }
                                 }
@@ -975,14 +1090,14 @@ fun MainScreen(
             )
         }
 
-        // File size error dialog
-        if (state.showFileSizeErrorDialog) {
+        // Attachment validation dialog
+        if (state.showAttachmentValidationDialog) {
             AlertDialog(
-                onDismissRequest = { viewModel.dismissFileSizeErrorDialog() },
-                title = { Text("File Too Large") },
-                text = { Text(state.fileSizeErrorMessage) },
+                onDismissRequest = { viewModel.dismissAttachmentValidationDialog() },
+                title = { Text(state.attachmentValidationTitle) },
+                text = { Text(state.attachmentValidationMessage) },
                 confirmButton = {
-                    Button(onClick = { viewModel.dismissFileSizeErrorDialog() }) {
+                    Button(onClick = { viewModel.dismissAttachmentValidationDialog() }) {
                         Text("OK")
                     }
                 },
@@ -1049,6 +1164,102 @@ fun MainScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+private fun installFileDropTargets(window: java.awt.Window, listener: DropTargetAdapter): List<Pair<Component, DropTarget?>> {
+    val components = linkedSetOf<Component>()
+    components += window
+    if (window is RootPaneContainer) {
+        components += window.rootPane
+        components += window.layeredPane
+        components += window.glassPane
+        components += window.contentPane
+        collectChildComponents(window.contentPane, components)
+    } else if (window is Container) {
+        collectChildComponents(window, components)
+    }
+
+    return components.map { component ->
+        val previousDropTarget = component.dropTarget
+        component.dropTarget = DropTarget(component, DnDConstants.ACTION_COPY, listener, true)
+        component to previousDropTarget
+    }
+}
+
+private fun collectChildComponents(container: Container, components: MutableSet<Component>) {
+    container.components.forEach { component ->
+        components += component
+        if (component is Container) {
+            collectChildComponents(component, components)
+        }
+    }
+}
+
+private fun DropTargetDragEvent.isFileDrag(): Boolean =
+    transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)
+
+private fun pasteClipboardAttachment(viewModel: MainViewModel) {
+    val clipboard = runCatching { Toolkit.getDefaultToolkit().systemClipboard }.getOrNull()
+    if (clipboard == null) {
+        viewModel.showAttachmentStatus("Clipboard is not available.", isError = true)
+        return
+    }
+
+    val transferable = runCatching { clipboard.getContents(null) }.getOrNull()
+    if (transferable == null) {
+        viewModel.showAttachmentStatus("Clipboard is empty.", isError = true)
+        return
+    }
+
+    when {
+        transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor) -> {
+            runCatching {
+                @Suppress("UNCHECKED_CAST")
+                transferable.getTransferData(DataFlavor.javaFileListFlavor) as List<File>
+            }.onSuccess { files ->
+                viewModel.addAttachments(files)
+            }.onFailure {
+                viewModel.showAttachmentStatus("Could not read files from the clipboard.", isError = true)
+            }
+        }
+
+        transferable.isDataFlavorSupported(DataFlavor.imageFlavor) -> {
+            runCatching {
+                val image = transferable.getTransferData(DataFlavor.imageFlavor) as? Image
+                    ?: error("Clipboard image format is not supported")
+                createClipboardImageTempFile(image)
+            }.onSuccess { file ->
+                viewModel.addAttachments(listOf(file), isTempFile = true)
+            }.onFailure {
+                viewModel.showAttachmentStatus("Clipboard does not contain a supported image.", isError = true)
+            }
+        }
+
+        else -> viewModel.showAttachmentStatus("Clipboard does not contain an image or file attachment.", isError = true)
+    }
+}
+
+private fun createClipboardImageTempFile(image: Image): File {
+    val tempFile = File(System.getProperty("java.io.tmpdir"), "pr-clipboard-${UUID.randomUUID()}.png")
+    ImageIO.write(image.toBufferedImage(), "png", tempFile)
+    return tempFile
+}
+
+private fun Image.toBufferedImage(): BufferedImage {
+    if (this is BufferedImage) return this
+
+    val width = getWidth(null)
+    val height = getHeight(null)
+    require(width > 0 && height > 0) { "Clipboard image has invalid dimensions." }
+
+    return BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB).also { buffered ->
+        val graphics = buffered.createGraphics()
+        try {
+            graphics.drawImage(this, 0, 0, null)
+        } finally {
+            graphics.dispose()
         }
     }
 }

@@ -10,6 +10,7 @@ data class PrAttachment(
     val sizeBytes: Long = file.length(),
     val mimeType: String = mimeTypeFromExtension(file.extension),
     val isVideo: Boolean = file.extension.lowercase() in videoExtensions,
+    val isTempFile: Boolean = false,
 )
 
 object AttachmentConfig {
