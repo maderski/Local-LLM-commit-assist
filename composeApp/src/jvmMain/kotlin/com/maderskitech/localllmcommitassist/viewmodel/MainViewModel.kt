@@ -1049,19 +1049,56 @@ class MainViewModel(
                             }
                             .onFailure { e ->
                                 val isNoUpstream = e.message?.contains("has no upstream branch") == true
-                                _uiState.value = _uiState.value.copy(
-                                    isLoading = false,
-                                    changedFiles = emptyList(),
-                                    fileSummary = "",
-                                    fullDiff = "",
-                                    commitSummary = "",
-                                    commitDescription = "",
-                                    statusMessage = if (isNoUpstream) "Committed successfully. Branch has not been published yet."
-                                        else "Committed but push failed: ${e.message}",
-                                    isError = !isNoUpstream,
-                                    showPublishBranchDialog = isNoUpstream,
-                                )
-                                loadChangedFiles()
+                                val isNonFastForward = e.message?.contains("non-fast-forward") == true ||
+                                    e.message?.contains("rejected") == true
+                                if (isNonFastForward) {
+                                    _uiState.value = _uiState.value.copy(statusMessage = "Push rejected, rebasing on remote changes...")
+                                    gitService.pullRebase(state.repoPath.trim())
+                                        .onSuccess {
+                                            gitService.push(state.repoPath.trim())
+                                                .onSuccess { pushOutput ->
+                                                    _uiState.value = _uiState.value.copy(
+                                                        isLoading = false,
+                                                        changedFiles = emptyList(),
+                                                        fileSummary = "",
+                                                        fullDiff = "",
+                                                        commitSummary = "",
+                                                        commitDescription = "",
+                                                        statusMessage = "Committed and pushed successfully (after rebase)!\n$commitOutput\n$pushOutput",
+                                                        isError = false,
+                                                    )
+                                                    loadChangedFiles()
+                                                }
+                                                .onFailure { pushError ->
+                                                    _uiState.value = _uiState.value.copy(
+                                                        isLoading = false,
+                                                        statusMessage = "Committed but push failed after rebase: ${pushError.message}",
+                                                        isError = true,
+                                                    )
+                                                }
+                                        }
+                                        .onFailure { rebaseError ->
+                                            _uiState.value = _uiState.value.copy(
+                                                isLoading = false,
+                                                statusMessage = "Committed but rebase failed: ${rebaseError.message}",
+                                                isError = true,
+                                            )
+                                        }
+                                } else {
+                                    _uiState.value = _uiState.value.copy(
+                                        isLoading = false,
+                                        changedFiles = emptyList(),
+                                        fileSummary = "",
+                                        fullDiff = "",
+                                        commitSummary = "",
+                                        commitDescription = "",
+                                        statusMessage = if (isNoUpstream) "Committed successfully. Branch has not been published yet."
+                                            else "Committed but push failed: ${e.message}",
+                                        isError = !isNoUpstream,
+                                        showPublishBranchDialog = isNoUpstream,
+                                    )
+                                    loadChangedFiles()
+                                }
                             }
                     } else {
                         _uiState.value = _uiState.value.copy(

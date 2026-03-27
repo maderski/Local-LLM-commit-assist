@@ -449,4 +449,19 @@ class GitService {
         }
         output
     }
+
+    fun pullRebase(repoPath: String): Result<String> = runCatching {
+        val process = ProcessBuilder("git", "pull", "--rebase")
+            .directory(File(repoPath))
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        if (exitCode != 0) {
+            error("git pull --rebase failed (exit $exitCode): $output")
+        }
+        output
+    }
 }
