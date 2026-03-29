@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -254,6 +255,16 @@ fun MainScreen(
                     }
 
                     if (state.repoPath.isNotBlank()) {
+                        TooltipBox(
+                            positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                            tooltip = { PlainTooltip { Text("Open in Finder") } },
+                            state = rememberTooltipState(),
+                        ) {
+                            IconButton(onClick = { viewModel.openFinder() }) {
+                                Icon(Icons.Default.Folder, contentDescription = "Open in Finder", tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+
                         TooltipBox(
                             positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
                             tooltip = { PlainTooltip { Text("Open in Terminal") } },

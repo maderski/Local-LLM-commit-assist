@@ -1020,6 +1020,14 @@ class MainViewModel(
         }
     }
 
+    fun openFinder() {
+        val path = _uiState.value.repoPath.trim()
+        if (path.isBlank()) return
+        runCatching {
+            ProcessBuilder("open", path).start()
+        }
+    }
+
     fun commit(andPush: Boolean = false) {
         val state = _uiState.value
         if (state.commitSummary.isBlank()) {
