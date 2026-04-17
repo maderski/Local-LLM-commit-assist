@@ -838,6 +838,28 @@ class MainViewModel(
                             isError = false,
                             prAttachments = emptyList(),
                         )
+                        if (settingsRepository.getAzureUpdateWorkItemStatus() && workItemIds.isNotEmpty()) {
+                            val failedWorkItems = mutableListOf<String>()
+                            workItemIds.forEach { workItemId ->
+                                prService.updateAzureWorkItemState(
+                                    token = token,
+                                    username = username,
+                                    orgUrl = parsed.first,
+                                    project = parsed.second,
+                                    workItemId = workItemId,
+                                    state = "Ready for QA",
+                                ).onFailure { e ->
+                                    failedWorkItems.add("$workItemId: ${e.message}")
+                                }
+                            }
+                            if (failedWorkItems.isNotEmpty()) {
+                                val message = "Pull request created successfully! Warning: failed to update ${failedWorkItems.size} work item${if (failedWorkItems.size > 1) "s" else ""} to Ready for QA: ${failedWorkItems.joinToString("; ")}"
+                                _uiState.value = _uiState.value.copy(
+                                    statusMessage = message,
+                                    isError = true,
+                                )
+                            }
+                        }
                     }.onFailure { e ->
                         _uiState.value = _uiState.value.copy(
                             isLoading = false,
