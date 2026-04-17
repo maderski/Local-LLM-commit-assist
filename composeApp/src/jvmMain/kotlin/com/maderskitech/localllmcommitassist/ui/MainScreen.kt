@@ -970,23 +970,44 @@ fun MainScreen(
                             }
 
                             if (state.prUrl.isNotBlank()) {
-                                Text(
-                                    text = state.prUrl,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        textDecoration = TextDecoration.Underline,
-                                    ),
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(8.dp))
                                         .background(MaterialTheme.colorScheme.primaryContainer)
-                                        .padding(12.dp)
                                         .clickable {
                                             runCatching {
                                                 Desktop.getDesktop().browse(URI(state.prUrl))
                                             }
-                                        },
-                                )
+                                        }
+                                        .padding(12.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.CloudUpload,
+                                        contentDescription = "Pull Request",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Text(
+                                        text = if (state.prNumber.isNotBlank()) "PR ${state.prNumber}" else "Open Pull Request",
+                                        color = MaterialTheme.colorScheme.primary,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontWeight = FontWeight.SemiBold,
+                                            textDecoration = TextDecoration.Underline,
+                                        ),
+                                    )
+                                    Spacer(Modifier.weight(1f))
+                                    Text(
+                                        text = state.prUrl,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false),
+                                    )
+                                }
                             }
                         }
                     }
