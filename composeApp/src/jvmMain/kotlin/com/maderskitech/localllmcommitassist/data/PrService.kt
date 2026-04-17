@@ -293,6 +293,28 @@ class PrService {
             ?: error("No url in Azure DevOps upload response: $responseBody")
     }
 
+    suspend fun updateAzureWorkItemState(
+        token: String,
+        username: String,
+        orgUrl: String,
+        project: String,
+        workItemId: String,
+        state: String,
+    ): Result<Unit> = runCatching {
+        val encodedToken = Base64.getEncoder().encodeToString("$username:$token".toByteArray())
+        val url = "$orgUrl/$project/_apis/wit/workitems/$workItemId?api-version=7.1"
+
+        val response = client.patch(url) {
+            header(HttpHeaders.Authorization, "Basic $encodedToken")
+            contentType(ContentType("application", "json-patch+json"))
+            setBody("""[{"op":"add","path":"/fields/System.State","value":"$state"}]""")
+        }
+        val responseBody = response.bodyAsText()
+        if (!response.status.isSuccess()) {
+            error("Azure DevOps work item update error ${response.status.value}: $responseBody")
+        }
+    }
+
     fun buildMarkdownReference(attachment: PrAttachment, url: String): String {
         return if (attachment.isVideo) {
             "[![${attachment.name}]($url)]($url)"

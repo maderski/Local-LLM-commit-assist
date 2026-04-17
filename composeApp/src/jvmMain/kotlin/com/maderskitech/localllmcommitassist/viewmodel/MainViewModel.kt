@@ -838,6 +838,18 @@ class MainViewModel(
                             isError = false,
                             prAttachments = emptyList(),
                         )
+                        if (settingsRepository.getAzureUpdateWorkItemStatus() && workItemIds.isNotEmpty()) {
+                            workItemIds.forEach { workItemId ->
+                                prService.updateAzureWorkItemState(
+                                    token = token,
+                                    username = username,
+                                    orgUrl = parsed.first,
+                                    project = parsed.second,
+                                    workItemId = workItemId,
+                                    state = "Ready for QA",
+                                )
+                            }
+                        }
                     }.onFailure { e ->
                         _uiState.value = _uiState.value.copy(
                             isLoading = false,

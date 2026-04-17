@@ -133,6 +133,12 @@ class SettingsRepository {
         prefs.putBoolean(KEY_AZURE_AUTO_TAG, enabled)
     }
 
+    fun getAzureUpdateWorkItemStatus(): Boolean = prefs.getBoolean(KEY_AZURE_UPDATE_WORK_ITEM_STATUS, false)
+
+    fun setAzureUpdateWorkItemStatus(enabled: Boolean) {
+        prefs.putBoolean(KEY_AZURE_UPDATE_WORK_ITEM_STATUS, enabled)
+    }
+
     fun getGitHubReviewers(): List<GitHubReviewer> {
         val raw = prefs.get(KEY_GITHUB_REVIEWERS, "")
         if (raw.isBlank()) return emptyList()
@@ -158,6 +164,7 @@ class SettingsRepository {
         private const val KEY_GITHUB_REVIEWERS = "github_reviewers"
         private const val KEY_AZURE_LINK_WORK_ITEMS = "azure_link_work_items"
         private const val KEY_AZURE_AUTO_TAG = "azure_auto_tag"
+        private const val KEY_AZURE_UPDATE_WORK_ITEM_STATUS = "azure_update_work_item_status"
         private const val DEFAULT_LLM_ADDRESS = "http://localhost:1234/v1"
         private const val DEFAULT_MODEL_NAME = ""
         private const val DEFAULT_PR_PLATFORM = "github"

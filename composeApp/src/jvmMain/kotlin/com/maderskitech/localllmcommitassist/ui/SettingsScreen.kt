@@ -46,6 +46,7 @@ fun SettingsScreen(
     var prDropdownExpanded by remember { mutableStateOf(false) }
     var azureLinkWorkItems by remember { mutableStateOf(settingsRepository.getAzureLinkWorkItems()) }
     var azureAutoTag by remember { mutableStateOf(settingsRepository.getAzureAutoTag()) }
+    var azureUpdateWorkItemStatus by remember { mutableStateOf(settingsRepository.getAzureUpdateWorkItemStatus()) }
     var azureReviewers by remember { mutableStateOf(settingsRepository.getAzureReviewers()) }
     var newReviewerName by remember { mutableStateOf("") }
     var newReviewerUuid by remember { mutableStateOf("") }
@@ -397,6 +398,24 @@ fun SettingsScreen(
                             "Auto-tag PRs based on project name",
                             style = MaterialTheme.typography.bodyMedium,
                         )
+                    }
+
+                    if (azureLinkWorkItems) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(
+                                checked = azureUpdateWorkItemStatus,
+                                onCheckedChange = {
+                                    azureUpdateWorkItemStatus = it
+                                    settingsRepository.setAzureUpdateWorkItemStatus(it)
+                                },
+                            )
+                            Text(
+                                "Set linked work item status to 'Ready for QA' when PR is created",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
                     }
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
