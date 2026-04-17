@@ -12,6 +12,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import java.net.URLEncoder
 import java.util.Base64
 import java.util.UUID
 
@@ -277,7 +278,8 @@ class PrService {
     ): Result<String> = runCatching {
         val encodedToken = Base64.getEncoder().encodeToString("$username:$token".toByteArray())
         val fileBytes = attachment.file.readBytes()
-        val url = "$orgUrl/$project/_apis/wit/attachments?fileName=${attachment.name}&api-version=7.1"
+        val encodedFileName = URLEncoder.encode(attachment.name, "UTF-8")
+        val url = "$orgUrl/$project/_apis/wit/attachments?fileName=$encodedFileName&api-version=7.1"
 
         val response = client.post(url) {
             header(HttpHeaders.Authorization, "Basic $encodedToken")
@@ -316,10 +318,11 @@ class PrService {
     }
 
     fun buildMarkdownReference(attachment: PrAttachment, url: String): String {
+        val safeName = attachment.name.replace("]", "\\]").replace("[", "\\[")
         return if (attachment.isVideo) {
-            "[![${attachment.name}]($url)]($url)"
+            "[![$safeName]($url)]($url)"
         } else {
-            "![${attachment.name}]($url)"
+            "![$safeName]($url)"
         }
     }
 }

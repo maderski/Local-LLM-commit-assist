@@ -746,7 +746,16 @@ class MainViewModel(
             }
 
             val augmentedBody = if (markdownReferences.isNotEmpty()) {
-                state.prBody + "\n\n" + markdownReferences.joinToString("\n")
+                val imagesMarkdown = markdownReferences.joinToString("\n")
+                val evidenceRegex = Regex("(## Evidence[^\n]*\n)", RegexOption.IGNORE_CASE)
+                val match = evidenceRegex.find(state.prBody)
+                if (match != null) {
+                    val insertPos = match.range.last + 1
+                    state.prBody.substring(0, insertPos) + "\n" + imagesMarkdown + "\n\n" +
+                        state.prBody.substring(insertPos)
+                } else {
+                    state.prBody + "\n\n" + imagesMarkdown
+                }
             } else {
                 state.prBody
             }
