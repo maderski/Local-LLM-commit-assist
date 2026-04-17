@@ -6,6 +6,7 @@ import com.maderskitech.localllmcommitassist.data.AttachmentConfig
 import com.maderskitech.localllmcommitassist.data.GitService
 import com.maderskitech.localllmcommitassist.data.LlmService
 import com.maderskitech.localllmcommitassist.data.PrAttachment
+import com.maderskitech.localllmcommitassist.data.AzureDevOpsPrResult
 import com.maderskitech.localllmcommitassist.data.GitHubPrResult
 import com.maderskitech.localllmcommitassist.data.PrService
 import com.maderskitech.localllmcommitassist.data.SettingsRepository
@@ -39,6 +40,7 @@ data class MainUiState(
     val prTitle: String = "",
     val prBody: String = "",
     val prUrl: String = "",
+    val prNumber: String = "",
     val prTemplate: String = "",
     val isCurrentBranchPublished: Boolean = false,
     val showBranchSwitchDialog: Boolean = false,
@@ -93,6 +95,7 @@ class MainViewModel(
             prTitle = "",
             prBody = "",
             prUrl = "",
+            prNumber = "",
             prAttachments = emptyList(),
         )
         loadCurrentBranch(path)
@@ -297,6 +300,7 @@ class MainViewModel(
             prTitle = "",
             prBody = "",
             prUrl = "",
+            prNumber = "",
             prAttachments = emptyList(),
         )
         loadCurrentBranch(path)
@@ -326,6 +330,7 @@ class MainViewModel(
             prTitle = "",
             prBody = "",
             prUrl = "",
+            prNumber = "",
             prAttachments = emptyList(),
         )
         loadCurrentBranch(newSelected)
@@ -462,7 +467,7 @@ class MainViewModel(
         val targetBranch = _uiState.value.prTargetBranch
 
         viewModelScope.launch(Dispatchers.IO) {
-            _uiState.value = _uiState.value.copy(isLoading = true, statusMessage = "Loading commit history...", isError = false, prUrl = "")
+            _uiState.value = _uiState.value.copy(isLoading = true, statusMessage = "Loading commit history...", isError = false, prUrl = "", prNumber = "")
 
             val commitLogResult = gitService.getCommitLog(path, targetBranch)
             commitLogResult.onFailure { e ->
@@ -793,6 +798,7 @@ class MainViewModel(
                         deleteTempAttachmentFiles(_uiState.value.prAttachments)
                         _uiState.value = _uiState.value.copy(
                             prUrl = result.url,
+                            prNumber = result.prNumber?.let { "#$it" } ?: "",
                             isLoading = false,
                             statusMessage = message,
                             isError = result.reviewerWarning != null,
@@ -838,10 +844,11 @@ class MainViewModel(
                         reviewers = reviewers,
                         workItemIds = workItemIds,
                         tags = tags,
-                    ).onSuccess { url ->
+                    ).onSuccess { result ->
                         deleteTempAttachmentFiles(_uiState.value.prAttachments)
                         _uiState.value = _uiState.value.copy(
-                            prUrl = url,
+                            prUrl = result.url,
+                            prNumber = result.prNumber?.let { "#$it" } ?: "",
                             isLoading = false,
                             statusMessage = "Pull request created successfully!",
                             isError = false,

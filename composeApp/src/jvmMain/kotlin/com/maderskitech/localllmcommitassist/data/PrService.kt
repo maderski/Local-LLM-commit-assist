@@ -31,7 +31,13 @@ private data class GitHubReviewersRequest(
 
 data class GitHubPrResult(
     val url: String,
+    val prNumber: Int? = null,
     val reviewerWarning: String? = null,
+)
+
+data class AzureDevOpsPrResult(
+    val url: String,
+    val prNumber: Int? = null,
 )
 
 @Serializable
@@ -144,9 +150,10 @@ class PrService {
         val htmlUrl = parsed["html_url"]?.jsonPrimitive?.content
             ?: error("No html_url in GitHub response: $responseBody")
 
-        if (reviewers.isEmpty()) return@runCatching GitHubPrResult(url = htmlUrl)
+        val prNumberEarly = parsed["number"]?.jsonPrimitive?.content?.toIntOrNull()
+        if (reviewers.isEmpty()) return@runCatching GitHubPrResult(url = htmlUrl, prNumber = prNumberEarly)
 
-        val prNumber = parsed["number"]?.jsonPrimitive?.content
+        val prNumber = prNumberEarly
         if (prNumber == null) {
             return@runCatching GitHubPrResult(url = htmlUrl, reviewerWarning = "PR created but reviewers could not be assigned: no PR number in response")
         }
@@ -166,7 +173,7 @@ class PrService {
             "PR created but reviewer assignment failed: ${e.message}"
         }
 
-        GitHubPrResult(url = htmlUrl, reviewerWarning = reviewerWarning)
+        GitHubPrResult(url = htmlUrl, prNumber = prNumber, reviewerWarning = reviewerWarning)
     }
 
     fun inferTags(repoName: String): List<String> {
@@ -200,7 +207,7 @@ class PrService {
         reviewers: List<AzureReviewer> = emptyList(),
         workItemIds: List<String> = emptyList(),
         tags: List<String> = emptyList(),
-    ): Result<String> = runCatching {
+    ): Result<AzureDevOpsPrResult> = runCatching {
         val encodedToken = Base64.getEncoder().encodeToString("$username:$token".toByteArray())
         val url = "$orgUrl/$project/_apis/git/repositories/$repo/pullrequests?api-version=7.1"
 
@@ -225,7 +232,7 @@ class PrService {
         }
         val parsed = json.parseToJsonElement(responseBody).jsonObject
         val pullRequestId = parsed["pullRequestId"]?.jsonPrimitive?.content
-        parsed["_links"]?.jsonObject
+        val prUrl = parsed["_links"]?.jsonObject
             ?.get("web")?.jsonObject
             ?.get("href")?.jsonPrimitive?.content
             ?: parsed["remoteUrl"]?.jsonPrimitive?.content
@@ -234,6 +241,7 @@ class PrService {
                 ?.let { repoWebUrl -> pullRequestId?.let { "$repoWebUrl/pullrequest/$it" } }
             ?: pullRequestId?.let { "$orgUrl/$project/_git/$repo/pullrequest/$it" }
             ?: error("No URL in Azure DevOps response: $responseBody")
+        AzureDevOpsPrResult(url = prUrl, prNumber = pullRequestId?.toIntOrNull())
     }
 
     suspend fun uploadFileToGitHubRepo(
