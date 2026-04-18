@@ -9,6 +9,7 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -322,6 +323,57 @@ class PrService {
         val responseBody = response.bodyAsText()
         if (!response.status.isSuccess()) {
             error("Azure DevOps work item update error ${response.status.value}: $responseBody")
+        }
+    }
+
+    suspend fun uploadAzureDevOpsPrAttachment(
+        token: String,
+        username: String,
+        orgUrl: String,
+        project: String,
+        repo: String,
+        prId: Int,
+        attachment: PrAttachment,
+    ): Result<String> = runCatching {
+        val encodedToken = Base64.getEncoder().encodeToString("$username:$token".toByteArray())
+        val fileBytes = attachment.file.readBytes()
+        val encodedFileName = URLEncoder.encode(attachment.name, "UTF-8")
+        val url = "$orgUrl/$project/_apis/git/repositories/$repo/pullRequests/$prId/attachments/$encodedFileName?api-version=7.1"
+
+        val response = client.post(url) {
+            header(HttpHeaders.Authorization, "Basic $encodedToken")
+            contentType(ContentType.Application.OctetStream)
+            setBody(fileBytes)
+        }
+        val responseBody = response.bodyAsText()
+        if (!response.status.isSuccess()) {
+            error("Azure DevOps PR attachment upload error ${response.status.value}: $responseBody")
+        }
+        val parsed = json.parseToJsonElement(responseBody).jsonObject
+        parsed["url"]?.jsonPrimitive?.content
+            ?: error("No url in Azure DevOps PR attachment response: $responseBody")
+    }
+
+    suspend fun updateAzureDevOpsPrDescription(
+        token: String,
+        username: String,
+        orgUrl: String,
+        project: String,
+        repo: String,
+        prId: Int,
+        description: String,
+    ): Result<Unit> = runCatching {
+        val encodedToken = Base64.getEncoder().encodeToString("$username:$token".toByteArray())
+        val url = "$orgUrl/$project/_apis/git/repositories/$repo/pullrequests/$prId?api-version=7.1"
+
+        val response = client.patch(url) {
+            header(HttpHeaders.Authorization, "Basic $encodedToken")
+            contentType(ContentType.Application.Json)
+            setBody("""{"description":${Json.encodeToString(description)}}""")
+        }
+        val responseBody = response.bodyAsText()
+        if (!response.status.isSuccess()) {
+            error("Azure DevOps PR description update error ${response.status.value}: $responseBody")
         }
     }
 
