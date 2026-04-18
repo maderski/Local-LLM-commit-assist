@@ -863,13 +863,13 @@ class MainViewModel(
                                     orgUrl = parsed.first,
                                     project = parsed.second,
                                     workItemId = workItemId,
-                                    state = "Ready for QA",
+                                    state = "Code Review",
                                 ).onFailure { e ->
                                     failedWorkItems.add("$workItemId: ${e.message}")
                                 }
                             }
                             if (failedWorkItems.isNotEmpty()) {
-                                val message = "Pull request created successfully! Warning: failed to update ${failedWorkItems.size} work item${if (failedWorkItems.size > 1) "s" else ""} to Ready for QA: ${failedWorkItems.joinToString("; ")}"
+                                val message = "Pull request created successfully! Warning: failed to update ${failedWorkItems.size} work item${if (failedWorkItems.size > 1) "s" else ""} to Code Review: ${failedWorkItems.joinToString("; ")}"
                                 _uiState.value = _uiState.value.copy(
                                     statusMessage = message,
                                     isError = true,
