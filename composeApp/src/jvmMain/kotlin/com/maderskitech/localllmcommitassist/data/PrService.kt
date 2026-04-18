@@ -68,10 +68,10 @@ private data class AzureDevOpsLabel(
     val name: String,
 )
 
-class PrService {
+class PrService(httpClient: HttpClient? = null) {
     private val json = Json { ignoreUnknownKeys = true }
 
-    private val client = HttpClient(CIO) {
+    private val client = httpClient ?: HttpClient(CIO) {
         install(ContentNegotiation) {
             json(json)
         }
