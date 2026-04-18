@@ -412,7 +412,7 @@ fun SettingsScreen(
                                 },
                             )
                             Text(
-                                "Set linked work item status to 'Ready for QA' when PR is created",
+                                "Set linked work item status to 'Code Review' when PR is created",
                                 style = MaterialTheme.typography.bodyMedium,
                             )
                         }

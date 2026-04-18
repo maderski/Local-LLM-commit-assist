@@ -695,47 +695,26 @@ class MainViewModel(
 
             val remoteUrl = remoteUrlResult.getOrThrow()
 
-            // Upload attachments and build augmented PR body
+            // Upload attachments and build augmented PR body (GitHub only; Azure DevOps uploads after PR creation)
             val attachments = _uiState.value.prAttachments
             val markdownReferences = mutableListOf<String>()
-            if (attachments.isNotEmpty()) {
+            if (attachments.isNotEmpty() && platform == "github") {
                 for ((index, attachment) in attachments.withIndex()) {
                     _uiState.value = _uiState.value.copy(
                         statusMessage = "Uploading attachment ${index + 1} of ${attachments.size}...",
                     )
-                    val uploadResult = when (platform) {
-                        "github" -> {
-                            val token = settingsRepository.getGitHubToken()
-                            val parsed = prService.parseGitHubRemote(remoteUrl)
-                            if (parsed == null) {
-                                Result.failure(Exception("Could not parse GitHub remote URL"))
-                            } else {
-                                prService.uploadFileToGitHubRepo(
-                                    token = token,
-                                    owner = parsed.first,
-                                    repo = parsed.second,
-                                    branch = currentBranch,
-                                    attachment = attachment,
-                                )
-                            }
-                        }
-                        "azure_devops" -> {
-                            val token = settingsRepository.getAzureDevOpsToken()
-                            val username = settingsRepository.getAzureDevOpsUsername()
-                            val parsed = prService.parseAzureDevOpsRemote(remoteUrl)
-                            if (parsed == null) {
-                                Result.failure(Exception("Could not parse Azure DevOps remote URL"))
-                            } else {
-                                prService.uploadAzureDevOpsAttachment(
-                                    token = token,
-                                    username = username,
-                                    orgUrl = parsed.first,
-                                    project = parsed.second,
-                                    attachment = attachment,
-                                )
-                            }
-                        }
-                        else -> Result.failure(Exception("Unknown platform: $platform"))
+                    val token = settingsRepository.getGitHubToken()
+                    val parsed = prService.parseGitHubRemote(remoteUrl)
+                    val uploadResult = if (parsed == null) {
+                        Result.failure(Exception("Could not parse GitHub remote URL"))
+                    } else {
+                        prService.uploadFileToGitHubRepo(
+                            token = token,
+                            owner = parsed.first,
+                            repo = parsed.second,
+                            branch = currentBranch,
+                            attachment = attachment,
+                        )
                     }
                     uploadResult.onFailure { e ->
                         _uiState.value = _uiState.value.copy(
@@ -750,20 +729,21 @@ class MainViewModel(
                 }
             }
 
-            val augmentedBody = if (markdownReferences.isNotEmpty()) {
-                val imagesMarkdown = markdownReferences.joinToString("\n")
+            fun buildAugmentedBody(baseBody: String, refs: List<String>): String {
+                if (refs.isEmpty()) return baseBody
+                val imagesMarkdown = refs.joinToString("\n")
                 val evidenceRegex = Regex("(## Evidence[^\n]*\n)", RegexOption.IGNORE_CASE)
-                val match = evidenceRegex.find(state.prBody)
-                if (match != null) {
+                val match = evidenceRegex.find(baseBody)
+                return if (match != null) {
                     val insertPos = match.range.last + 1
-                    state.prBody.substring(0, insertPos) + "\n" + imagesMarkdown + "\n\n" +
-                        state.prBody.substring(insertPos)
+                    baseBody.substring(0, insertPos) + "\n" + imagesMarkdown + "\n\n" +
+                        baseBody.substring(insertPos)
                 } else {
-                    state.prBody + "\n\n" + imagesMarkdown
+                    baseBody + "\n\n" + imagesMarkdown
                 }
-            } else {
-                state.prBody
             }
+
+            val augmentedBody = buildAugmentedBody(state.prBody, markdownReferences)
 
             _uiState.value = _uiState.value.copy(statusMessage = "Creating pull request...", isError = false)
 
@@ -838,20 +818,63 @@ class MainViewModel(
                         project = parsed.second,
                         repo = parsed.third,
                         title = state.prTitle,
-                        description = augmentedBody,
+                        description = state.prBody,
                         sourceBranch = currentBranch,
                         targetBranch = targetBranch,
                         reviewers = reviewers,
                         workItemIds = workItemIds,
                         tags = tags,
                     ).onSuccess { result ->
+                        // Upload attachments to the PR so URLs are accessible to all reviewers
+                        var attachmentWarning: String? = null
+                        if (attachments.isNotEmpty() && result.prNumber != null) {
+                            val prMarkdownRefs = mutableListOf<String>()
+                            for ((index, attachment) in attachments.withIndex()) {
+                                _uiState.value = _uiState.value.copy(
+                                    statusMessage = "Uploading attachment ${index + 1} of ${attachments.size}...",
+                                )
+                                prService.uploadAzureDevOpsPrAttachment(
+                                    token = token,
+                                    username = username,
+                                    orgUrl = parsed.first,
+                                    project = parsed.second,
+                                    repo = parsed.third,
+                                    prId = result.prNumber,
+                                    attachment = attachment,
+                                ).onSuccess { url ->
+                                    prMarkdownRefs.add(prService.buildMarkdownReference(attachment, url))
+                                }.onFailure { e ->
+                                    attachmentWarning = "Warning: failed to upload '${attachment.name}': ${e.message}"
+                                }
+                            }
+                            if (prMarkdownRefs.isNotEmpty()) {
+                                val updatedDescription = buildAugmentedBody(state.prBody, prMarkdownRefs)
+                                prService.updateAzureDevOpsPrDescription(
+                                    token = token,
+                                    username = username,
+                                    orgUrl = parsed.first,
+                                    project = parsed.second,
+                                    repo = parsed.third,
+                                    prId = result.prNumber,
+                                    description = updatedDescription,
+                                ).onFailure { e ->
+                                    attachmentWarning = (attachmentWarning?.let { "$it; " } ?: "") +
+                                        "Warning: failed to update PR description: ${e.message}"
+                                }
+                            }
+                        }
                         deleteTempAttachmentFiles(_uiState.value.prAttachments)
+                        val successMessage = if (attachmentWarning != null) {
+                            "Pull request created successfully! $attachmentWarning"
+                        } else {
+                            "Pull request created successfully!"
+                        }
                         _uiState.value = _uiState.value.copy(
                             prUrl = result.url,
                             prNumber = result.prNumber?.let { "#$it" } ?: "",
                             isLoading = false,
-                            statusMessage = "Pull request created successfully!",
-                            isError = false,
+                            statusMessage = successMessage,
+                            isError = attachmentWarning != null,
                             prAttachments = emptyList(),
                         )
                         if (settingsRepository.getAzureUpdateWorkItemStatus() && workItemIds.isNotEmpty()) {
@@ -863,13 +886,13 @@ class MainViewModel(
                                     orgUrl = parsed.first,
                                     project = parsed.second,
                                     workItemId = workItemId,
-                                    state = "Ready for QA",
+                                    state = "Code Review",
                                 ).onFailure { e ->
                                     failedWorkItems.add("$workItemId: ${e.message}")
                                 }
                             }
                             if (failedWorkItems.isNotEmpty()) {
-                                val message = "Pull request created successfully! Warning: failed to update ${failedWorkItems.size} work item${if (failedWorkItems.size > 1) "s" else ""} to Ready for QA: ${failedWorkItems.joinToString("; ")}"
+                                val message = "Pull request created successfully! Warning: failed to update ${failedWorkItems.size} work item${if (failedWorkItems.size > 1) "s" else ""} to Code Review: ${failedWorkItems.joinToString("; ")}"
                                 _uiState.value = _uiState.value.copy(
                                     statusMessage = message,
                                     isError = true,
