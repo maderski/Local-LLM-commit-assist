@@ -80,6 +80,7 @@ class LlmService {
         diff: String,
     ): Result<CommitMessage> = runCatching {
         val model = modelName.ifBlank { "local-model" }
+        val promptDiff = PromptCompactor.compactDiff(diff)
 
         val systemPrompt = buildString {
             append("You are a commit message generator. Analyze the provided git diff and write a commit message.\n\n")
@@ -89,7 +90,7 @@ class LlmService {
             append("Do NOT wrap your response in JSON, code fences, or quotes. Just plain text, two lines.")
         }
 
-        val userPrompt = "Generate a commit message for this diff:\n\n$diff"
+        val userPrompt = "Generate a commit message for this diff:\n\n$promptDiff"
 
         val response = client.post("${address.trimEnd('/')}/chat/completions") {
             contentType(ContentType.Application.Json)
@@ -106,7 +107,7 @@ class LlmService {
 
         val body = response.bodyAsText()
         if (!response.status.isSuccess()) {
-            error("LLM API error ${response.status.value}: ${response.status.description}")
+            error(buildApiError(response.status.value, response.status.description, body))
         }
         val chatResponse = json.decodeFromString<ChatResponse>(body)
         val content = chatResponse.choices.firstOrNull()?.message?.content?.trim()
@@ -118,7 +119,7 @@ class LlmService {
             return@runCatching CommitMessage(summary, parsed.description)
         }
 
-        val fallbackDescription = generateCommitDescriptionFallback(address, model, summary, diff)
+        val fallbackDescription = generateCommitDescriptionFallback(address, model, summary, promptDiff)
             .ifBlank { buildDefaultDescription(diff, summary) }
         CommitMessage(summary, fallbackDescription)
     }
@@ -131,18 +132,20 @@ class LlmService {
         prTemplate: String? = null,
     ): Result<PrDescription> = runCatching {
         val model = modelName.ifBlank { "local-model" }
+        val promptTemplate = prTemplate?.let { PromptCompactor.compactText(it, "PR template", 18_000) }
+        val promptCommitLog = PromptCompactor.compactText(commitLog, "commit log", 32_000)
 
         val systemPrompt = buildString {
             append("You are a pull request description generator. Analyze the provided git commit log and write a PR description.\n\n")
-            if (!prTemplate.isNullOrBlank()) {
+            if (!promptTemplate.isNullOrBlank()) {
                 append("IMPORTANT: The repository has a PR template. You MUST follow this template structure for the PR description body. ")
                 append("Fill in each section of the template based on the commit log.\n\n")
-                append("PR Template:\n$prTemplate\n\n")
+                append("PR Template:\n$promptTemplate\n\n")
             }
             append("Reply in plain text using EXACTLY this format and nothing else:\n\n")
             append("Line 1: A concise PR title under 72 characters describing the overall change\n")
             append("(blank line)\n")
-            if (!prTemplate.isNullOrBlank()) {
+            if (!promptTemplate.isNullOrBlank()) {
                 append("The PR description body following the provided template structure, with each section filled in based on the commits.\n\n")
             } else {
                 append("A brief 1-2 sentence summary of what was done and why.\n")
@@ -154,7 +157,7 @@ class LlmService {
 
         val userPrompt = buildString {
             append("Current branch: $currentBranch\n\n")
-            append("Generate a PR title and description for these commits:\n\n$commitLog")
+            append("Generate a PR title and description for these commits:\n\n$promptCommitLog")
         }
 
         val response = client.post("${address.trimEnd('/')}/chat/completions") {
@@ -172,7 +175,7 @@ class LlmService {
 
         val body = response.bodyAsText()
         if (!response.status.isSuccess()) {
-            error("LLM API error ${response.status.value}: ${response.status.description}")
+            error(buildApiError(response.status.value, response.status.description, body))
         }
         val chatResponse = json.decodeFromString<ChatResponse>(body)
         val content = chatResponse.choices.firstOrNull()?.message?.content?.trim()
@@ -300,7 +303,7 @@ class LlmService {
 
         val body = response.bodyAsText()
         if (!response.status.isSuccess()) {
-            error("LLM API error ${response.status.value}: ${response.status.description}")
+            error(buildApiError(response.status.value, response.status.description, body))
         }
         val chatResponse = json.decodeFromString<ChatResponse>(body)
         val raw = chatResponse.choices.firstOrNull()?.message?.content.orEmpty()
@@ -360,4 +363,130 @@ class LlmService {
             }
             .joinToString("\n")
     }
+
+    private fun buildApiError(statusCode: Int, statusDescription: String, body: String): String {
+        val compactBody = body
+            .replace(Regex("\\s+"), " ")
+            .trim()
+            .take(500)
+        return if (compactBody.isBlank()) {
+            "LLM API error $statusCode: $statusDescription"
+        } else {
+            "LLM API error $statusCode: $statusDescription - $compactBody"
+        }
+    }
+}
+
+internal object PromptCompactor {
+    private const val DEFAULT_TEXT_LIMIT = 32_000
+    private const val DEFAULT_DIFF_LIMIT = 90_000
+    private const val DEFAULT_SECTION_LIMIT = 8_000
+    private const val MIN_TRAILING_SECTION_CHARS = 600
+
+    fun compactText(text: String, label: String, maxChars: Int = DEFAULT_TEXT_LIMIT): String {
+        if (text.length <= maxChars) return text
+        return truncateWithNotice(text, label, maxChars)
+    }
+
+    fun compactDiff(
+        diff: String,
+        maxChars: Int = DEFAULT_DIFF_LIMIT,
+        maxCharsPerSection: Int = DEFAULT_SECTION_LIMIT,
+    ): String {
+        if (diff.length <= maxChars) return diff
+
+        val sections = splitDiffSections(diff)
+        if (sections.size <= 1) {
+            return truncateWithNotice(diff, "diff", maxChars)
+        }
+
+        val truncatedSections = sections.map { section ->
+            if (section.length <= maxCharsPerSection) {
+                section
+            } else {
+                truncateSection(section, maxCharsPerSection)
+            }
+        }
+
+        val builder = StringBuilder()
+        for (section in truncatedSections) {
+            val separatorLength = if (builder.isEmpty()) 0 else 1
+            if (builder.length + separatorLength + section.length > maxChars) {
+                break
+            }
+            if (builder.isNotEmpty()) builder.append('\n')
+            builder.append(section.trimEnd())
+        }
+
+        val compacted = if (builder.isNotEmpty()) builder.toString() else truncateSection(diff, maxChars)
+        val includedSections = countIncludedSections(compacted)
+        return buildString {
+            append("[diff truncated to fit model context: ")
+            append(diff.length)
+            append(" chars across ")
+            append(sections.size)
+            append(" file patch(es); sending ")
+            append(compacted.length)
+            append(" chars across ")
+            append(includedSections)
+            append(" patch(es)]\n\n")
+            append(compacted)
+        }
+    }
+
+    private fun splitDiffSections(diff: String): List<String> {
+        val sections = mutableListOf<String>()
+        val current = StringBuilder()
+        diff.lineSequence().forEach { line ->
+            if (line.trimStart().startsWith("diff --git ") && current.isNotEmpty()) {
+                sections += current.toString().trimEnd()
+                current.clear()
+            }
+            current.append(line).append('\n')
+        }
+        if (current.isNotEmpty()) {
+            sections += current.toString().trimEnd()
+        }
+        return sections.filter { it.isNotBlank() }
+    }
+
+    private fun truncateWithNotice(text: String, label: String, maxChars: Int): String {
+        if (text.length <= maxChars) return text
+        val notice = "[${label.trim()} truncated to fit model context: ${text.length} chars -> ${maxChars} chars]\n\n"
+        val usableChars = maxChars - notice.length
+        if (usableChars <= 0) {
+            return notice.take(maxChars)
+        }
+        return notice + truncateMiddle(text, usableChars)
+    }
+
+    private fun truncateSection(section: String, maxChars: Int): String {
+        if (section.length <= maxChars) return section
+        val header = section.lineSequence()
+            .takeWhile { !it.trimStart().startsWith("@@") }
+            .joinToString("\n")
+            .trimEnd()
+        val headerWithSpacing = if (header.isBlank()) "" else "$header\n"
+        val remaining = (maxChars - headerWithSpacing.length).coerceAtLeast(256)
+        val body = section.removePrefix(headerWithSpacing)
+        return headerWithSpacing + truncateMiddle(body, remaining)
+    }
+
+    private fun truncateMiddle(text: String, maxChars: Int): String {
+        if (text.length <= maxChars) return text
+        val marker = "\n... [truncated] ...\n"
+        val remaining = maxChars - marker.length
+        if (remaining <= 0) {
+            return text.take(maxChars)
+        }
+        val head = remaining * 3 / 4
+        val tail = remaining - head
+        val targetTail = MIN_TRAILING_SECTION_CHARS.coerceAtMost(remaining / 2)
+        val safeTail = if (tail >= targetTail) tail else targetTail
+        val safeHead = (remaining - safeTail).coerceAtLeast(0)
+        return text.take(safeHead) + marker + text.takeLast(safeTail)
+    }
+
+    private fun countIncludedSections(text: String): Int =
+        text.lineSequence().count { it.trimStart().startsWith("diff --git ") }.coerceAtLeast(1)
 }
