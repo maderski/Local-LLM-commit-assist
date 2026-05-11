@@ -1,6 +1,7 @@
 package com.maderskitech.localllmcommitassist.data
 
 import io.ktor.client.*
+import io.ktor.client.engine.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
@@ -39,19 +40,20 @@ data class CommitMessage(val summary: String, val description: String)
 @Serializable
 data class PrDescription(val title: String, val body: String)
 
-class LlmService {
-    private val json = Json { ignoreUnknownKeys = true }
+class LlmService private constructor(
+    dependencies: Dependencies,
+) {
+    private val client = dependencies.client
+    private val json = dependencies.json
 
-    private val client = HttpClient(CIO) {
-        install(ContentNegotiation) {
-            json(json)
-        }
-        install(HttpTimeout) {
-            requestTimeoutMillis = 5 * 60 * 1000 // 5 minutes
-            connectTimeoutMillis = 30 * 1000      // 30 seconds
-            socketTimeoutMillis = 5 * 60 * 1000   // 5 minutes
-        }
-    }
+    constructor() : this(defaultDependencies())
+
+    constructor(client: HttpClient) : this(Dependencies(client = client, json = defaultJson()))
+
+    constructor(client: HttpClient, json: Json) : this(Dependencies(client = client, json = json))
+
+    constructor(engine: HttpClientEngine, json: Json = defaultJson()) :
+        this(Dependencies(client = createHttpClient(engine, json), json = json))
 
     suspend fun testConnection(address: String, modelName: String): Result<String> = runCatching {
         val model = modelName.ifBlank { "local-model" }
@@ -373,6 +375,42 @@ class LlmService {
             "LLM API error $statusCode: $statusDescription"
         } else {
             "LLM API error $statusCode: $statusDescription - $compactBody"
+        }
+    }
+
+    private companion object {
+        private data class Dependencies(
+            val client: HttpClient,
+            val json: Json,
+        )
+
+        private fun defaultDependencies(): Dependencies {
+            val json = defaultJson()
+            return Dependencies(
+                client = createDefaultHttpClient(json),
+                json = json,
+            )
+        }
+
+        private fun defaultJson(): Json = Json { ignoreUnknownKeys = true }
+
+        private fun createDefaultHttpClient(json: Json): HttpClient = HttpClient(CIO) {
+            applyDefaultConfiguration(json)
+        }
+
+        private fun createHttpClient(engine: HttpClientEngine, json: Json): HttpClient = HttpClient(engine) {
+            applyDefaultConfiguration(json)
+        }
+
+        private fun HttpClientConfig<*>.applyDefaultConfiguration(json: Json) {
+            install(ContentNegotiation) {
+                json(json)
+            }
+            install(HttpTimeout) {
+                requestTimeoutMillis = 5 * 60 * 1000 // 5 minutes
+                connectTimeoutMillis = 30 * 1000      // 30 seconds
+                socketTimeoutMillis = 5 * 60 * 1000   // 5 minutes
+            }
         }
     }
 }
