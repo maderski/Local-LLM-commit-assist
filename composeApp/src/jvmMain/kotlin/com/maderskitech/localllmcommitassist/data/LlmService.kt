@@ -113,6 +113,8 @@ class LlmService private constructor(
         val model = modelName.ifBlank { "local-model" }
         val systemPrompt = buildString {
             append("You are a commit message generator. Analyze the provided git diff and write a commit message.\n\n")
+            append("Do not use reasoning, chain-of-thought, or deliberation in your response. ")
+            append("Respond immediately with the final answer only.\n\n")
             append("Reply with EXACTLY two lines and nothing else:\n")
             append("Line 1: A short imperative commit summary under 72 characters\n")
             append("Line 2: A detailed description with bullet points (use - for bullets) explaining the key changes\n\n")
@@ -191,6 +193,8 @@ class LlmService private constructor(
 
             val systemPrompt = buildString {
                 append("You are a pull request description generator. Analyze the provided git commit log and write a PR description.\n\n")
+                append("Do not use reasoning, chain-of-thought, or deliberation in your response. ")
+                append("Respond immediately with the final answer only.\n\n")
                 if (!promptTemplate.isNullOrBlank()) {
                     append("IMPORTANT: The repository has a PR template. You MUST follow this template structure for the PR description body. ")
                     append("Fill in each section of the template based on the commit log.\n\n")
@@ -321,6 +325,7 @@ class LlmService private constructor(
     ): String {
         val systemPrompt = buildString {
             append("You generate only commit message descriptions.\n")
+            append("Do not use reasoning, chain-of-thought, or deliberation in your response.\n")
             append("Return plain text body only, no title, no JSON, no code fences.\n")
             append("Write 2-4 bullet points using '- ' explaining key changes and impact.")
         }
