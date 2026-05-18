@@ -412,6 +412,7 @@ class MainViewModel(
 
         val address = settingsRepository.getLlmAddress()
         val model = settingsRepository.getModelName()
+        val modelContextWindow = settingsRepository.getModelContextWindow(model)
 
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.value = _uiState.value.copy(isLoading = true, statusMessage = "Loading diff...", isError = false)
@@ -435,7 +436,7 @@ class MainViewModel(
                 isError = false,
             )
 
-            llmService.generateCommitMessage(address, model, diff)
+            llmService.generateCommitMessage(address, model, diff, modelContextWindow)
                 .onSuccess { commitMessage ->
                     _uiState.value = _uiState.value.copy(
                         commitSummary = commitMessage.summary,
@@ -464,6 +465,7 @@ class MainViewModel(
 
         val address = settingsRepository.getLlmAddress()
         val model = settingsRepository.getModelName()
+        val modelContextWindow = settingsRepository.getModelContextWindow(model)
         val targetBranch = _uiState.value.prTargetBranch
 
         viewModelScope.launch(Dispatchers.IO) {
@@ -496,7 +498,7 @@ class MainViewModel(
             val currentBranch = _uiState.value.currentBranch
             _uiState.value = _uiState.value.copy(statusMessage = "Generating PR description...", isError = false)
 
-            llmService.generatePrDescription(address, model, commitLog, currentBranch, template)
+            llmService.generatePrDescription(address, model, commitLog, currentBranch, template, modelContextWindow)
                 .onSuccess { prDescription ->
                     _uiState.value = _uiState.value.copy(
                         prTitle = prDescription.title,

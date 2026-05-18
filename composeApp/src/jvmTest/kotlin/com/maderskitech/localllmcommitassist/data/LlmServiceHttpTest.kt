@@ -25,9 +25,16 @@ import kotlin.test.assertTrue
 class LlmServiceHttpTest {
 
     private fun mockClient(
+        modelsHandler: (suspend MockRequestHandleScope.(HttpRequestData) -> io.ktor.client.request.HttpResponseData)? = null,
         handler: suspend MockRequestHandleScope.(HttpRequestData) -> io.ktor.client.request.HttpResponseData,
     ): HttpClient {
-        return HttpClient(MockEngine { request -> handler(request) }) {
+        return HttpClient(MockEngine { request ->
+            if (request.url.encodedPath.startsWith("/models")) {
+                modelsHandler?.invoke(this, request) ?: respondJson("""{"data":[]}""")
+            } else {
+                handler(request)
+            }
+        }) {
             install(ContentNegotiation) {
                 json(Json { ignoreUnknownKeys = true })
             }
@@ -59,6 +66,80 @@ class LlmServiceHttpTest {
         val body = (request.body as TextContent).text
         assertContains(body, "\"model\":\"local-model\"")
         assertContains(body, "Generate a commit message for this diff:")
+    }
+
+    @Test
+    fun testConnection_reportsProviderDetectedContextWindow() = runTest {
+        val client = mockClient(
+            modelsHandler = { request ->
+                when (request.url.encodedPath) {
+                    "/models" -> respondJson("""{"data":[{"id":"test-model","context_length":32768}]}""")
+                    else -> error("Unexpected request path: ${request.url.encodedPath}")
+                }
+            },
+        ) { request ->
+            when (request.url.encodedPath) {
+                "/chat/completions" ->
+                    respondJson("""{"choices":[{"message":{"role":"assistant","content":"hello"}}]}""")
+                else -> error("Unexpected request path: ${request.url.encodedPath}")
+            }
+        }
+
+        val service = LlmService(client)
+        val result = service.testConnection("http://localhost", "test-model")
+
+        assertTrue(result.isSuccess)
+        assertEquals("hello (detected from provider metadata; context window 32768 tokens)", result.getOrThrow())
+    }
+
+    @Test
+    fun testConnection_usesConfiguredContextWindowWhenProviderMetadataIsMissing() = runTest {
+        val client = mockClient(
+            modelsHandler = { request ->
+                when (request.url.encodedPath) {
+                    "/models" -> respondJson("""{"data":[{"id":"other-model"}]}""")
+                    "/models/test-model" -> respondJson("""{"id":"test-model"}""")
+                    else -> error("Unexpected request path: ${request.url.encodedPath}")
+                }
+            },
+        ) { request ->
+            when (request.url.encodedPath) {
+                "/chat/completions" ->
+                    respondJson("""{"choices":[{"message":{"role":"assistant","content":"hello"}}]}""")
+                else -> error("Unexpected request path: ${request.url.encodedPath}")
+            }
+        }
+
+        val service = LlmService(client)
+        val result = service.testConnection("http://localhost", "test-model", modelContextWindowTokens = 16_384)
+
+        assertTrue(result.isSuccess)
+        assertEquals("hello (using configured override; context window 16384 tokens)", result.getOrThrow())
+    }
+
+    @Test
+    fun testConnection_usesFallbackContextWindowWhenNothingElseIsAvailable() = runTest {
+        val client = mockClient(
+            modelsHandler = { request ->
+                when (request.url.encodedPath) {
+                    "/models" -> respondJson("""{"data":[{"id":"other-model"}]}""")
+                    "/models/test-model" -> respondJson("""{"id":"test-model"}""")
+                    else -> error("Unexpected request path: ${request.url.encodedPath}")
+                }
+            },
+        ) { request ->
+            when (request.url.encodedPath) {
+                "/chat/completions" ->
+                    respondJson("""{"choices":[{"message":{"role":"assistant","content":"hello"}}]}""")
+                else -> error("Unexpected request path: ${request.url.encodedPath}")
+            }
+        }
+
+        val service = LlmService(client)
+        val result = service.testConnection("http://localhost", "test-model")
+
+        assertTrue(result.isSuccess)
+        assertEquals("hello (using conservative fallback; context window 8192 tokens)", result.getOrThrow())
     }
 
     @Test
@@ -119,9 +200,21 @@ class LlmServiceHttpTest {
     @Test
     fun generateCommitMessage_includesCompactionNotice_forOversizedDiff() = runTest {
         var requestBody = ""
-        val client = mockClient { request ->
-            requestBody = (request.body as TextContent).text
-            respondJson("""{"choices":[{"message":{"role":"assistant","content":"Compact diff\n- Use prompt compaction"}}]}""")
+        val client = mockClient(
+            modelsHandler = { request ->
+                when (request.url.encodedPath) {
+                    "/models" -> respondJson("""{"data":[{"id":"model","context_length":32768}]}""")
+                    else -> error("Unexpected request path: ${request.url.encodedPath}")
+                }
+            },
+        ) { request ->
+            when (request.url.encodedPath) {
+                "/chat/completions" -> {
+                    requestBody = (request.body as TextContent).text
+                    respondJson("""{"choices":[{"message":{"role":"assistant","content":"Compact diff\n- Use prompt compaction"}}]}""")
+                }
+                else -> error("Unexpected request path: ${request.url.encodedPath}")
+            }
         }
 
         val diff = buildString {
@@ -139,11 +232,72 @@ class LlmServiceHttpTest {
     }
 
     @Test
+    fun generateCommitMessage_retriesWithSmallerBudgetAfterContextOverflow() = runTest {
+        val requestBodies = mutableListOf<String>()
+        var completionCalls = 0
+        val client = mockClient(
+            modelsHandler = { request ->
+                when (request.url.encodedPath) {
+                    "/models" -> respondJson("""{"data":[{"id":"model","context_length":16384}]}""")
+                    else -> error("Unexpected request path: ${request.url.encodedPath}")
+                }
+            },
+        ) { request ->
+            when (request.url.encodedPath) {
+                "/chat/completions" -> {
+                    val body = (request.body as TextContent).text
+                    requestBodies += body
+                    completionCalls += 1
+                    when (completionCalls) {
+                        1 -> respond(
+                            content = ByteReadChannel("""{"error":"request exceeds context window"}"""),
+                            status = HttpStatusCode.BadRequest,
+                            headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                        )
+                        else -> respondJson("""{"choices":[{"message":{"role":"assistant","content":"Retry compact diff\n- Shrink prompt on overflow"}}]}""")
+                    }
+                }
+                else -> error("Unexpected request path: ${request.url.encodedPath}")
+            }
+        }
+
+        val diff = buildString {
+            repeat(1_400) { fileIndex ->
+                append("diff --git a/src/File$fileIndex.kt b/src/File$fileIndex.kt\n")
+                append("@@ -1,1 +1,4 @@\n")
+                append("+line $fileIndex a with enough code content to consume prompt budget\n")
+                append("+line $fileIndex b with enough code content to consume prompt budget\n")
+                append("+line $fileIndex c with enough code content to consume prompt budget\n")
+                append("+line $fileIndex d with enough code content to consume prompt budget\n")
+            }
+        }
+
+        val service = LlmService(client)
+        val result = service.generateCommitMessage("http://localhost", "model", diff)
+
+        assertTrue(result.isSuccess)
+        assertEquals(2, completionCalls)
+        assertTrue(requestBodies[1].length < requestBodies[0].length)
+    }
+
+    @Test
     fun generatePrDescription_includesTemplateAndCompactedCommitLog() = runTest {
         var requestBody = ""
-        val client = mockClient { request ->
-            requestBody = (request.body as TextContent).text
-            respondJson("""{"choices":[{"message":{"role":"assistant","content":"Improve prompt safety\n\nSummarize prompt handling\n\n- Add compaction\n- Add tests"}}]}""")
+        val client = mockClient(
+            modelsHandler = { request ->
+                when (request.url.encodedPath) {
+                    "/models" -> respondJson("""{"data":[{"id":"model","context_length":32768}]}""")
+                    else -> error("Unexpected request path: ${request.url.encodedPath}")
+                }
+            },
+        ) { request ->
+            when (request.url.encodedPath) {
+                "/chat/completions" -> {
+                    requestBody = (request.body as TextContent).text
+                    respondJson("""{"choices":[{"message":{"role":"assistant","content":"Improve prompt safety\n\nSummarize prompt handling\n\n- Add compaction\n- Add tests"}}]}""")
+                }
+                else -> error("Unexpected request path: ${request.url.encodedPath}")
+            }
         }
 
         val commitLog = buildString {
@@ -220,7 +374,7 @@ class LlmServiceHttpTest {
         val result = service.generatePrDescription("http://localhost", "model", "abc Test", "feature/test")
 
         assertTrue(result.isFailure)
-        assertContains(result.exceptionOrNull()?.message.orEmpty(), "LLM returned an empty response:")
+        assertContains(result.exceptionOrNull()?.message.orEmpty(), "LLM returned an empty response")
     }
 
     @Test

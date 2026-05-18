@@ -31,6 +31,9 @@ fun SettingsScreen(
 ) {
     var llmAddress by remember { mutableStateOf(settingsRepository.getLlmAddress()) }
     var modelName by remember { mutableStateOf(settingsRepository.getModelName()) }
+    var modelContextWindow by remember {
+        mutableStateOf(settingsRepository.getModelContextWindow(modelName)?.toString().orEmpty())
+    }
     var saved by remember { mutableStateOf(false) }
     var testing by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<String?>(null) }
@@ -111,9 +114,28 @@ fun SettingsScreen(
 
                 OutlinedTextField(
                     value = modelName,
-                    onValueChange = { modelName = it; saved = false; testResult = null },
+                    onValueChange = {
+                        modelName = it
+                        modelContextWindow = settingsRepository.getModelContextWindow(it)?.toString().orEmpty()
+                        saved = false
+                        testResult = null
+                    },
                     label = { Text("Model Name (optional)") },
                     placeholder = { Text("Leave blank for default") },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                OutlinedTextField(
+                    value = modelContextWindow,
+                    onValueChange = { modelContextWindow = it.filter(Char::isDigit); saved = false; testResult = null },
+                    label = { Text("Context Window (tokens)") },
+                    placeholder = { Text("Optional, e.g. 16384 or 32768") },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = MaterialTheme.colorScheme.primary,
@@ -131,6 +153,7 @@ fun SettingsScreen(
                         onClick = {
                             settingsRepository.setLlmAddress(llmAddress)
                             settingsRepository.setModelName(modelName)
+                            settingsRepository.setModelContextWindow(modelName, modelContextWindow.toIntOrNull())
                             saved = true
                         },
                         shape = RoundedCornerShape(8.dp),
@@ -143,7 +166,11 @@ fun SettingsScreen(
                             testing = true
                             testResult = null
                             scope.launch(Dispatchers.IO) {
-                                llmService.testConnection(llmAddress, modelName)
+                                llmService.testConnection(
+                                    llmAddress,
+                                    modelName,
+                                    modelContextWindow.toIntOrNull(),
+                                )
                                     .onSuccess { reply ->
                                         testResult = "Connection successful! LLM replied: \"$reply\""
                                         testIsError = false

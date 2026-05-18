@@ -58,6 +58,20 @@ class LlmServiceTest {
     }
 
     @Test
+    fun compactTextToTokenBudget_usesSmallerBudgetFor16kThan32k() {
+        val text = buildString {
+            repeat(40_000) { append("commit log line $it\n") }
+        }
+
+        val compact16k = PromptCompactor.compactTextToTokenBudget(text, "commit log", maxTokens = 4_000)
+        val compact32k = PromptCompactor.compactTextToTokenBudget(text, "commit log", maxTokens = 8_000)
+
+        assertTrue(compact16k.length < compact32k.length)
+        assertContains(compact16k, "[commit log truncated to fit model context:")
+        assertContains(compact32k, "[commit log truncated to fit model context:")
+    }
+
+    @Test
     fun compactDiff_returnsOriginal_whenWithinBudget() {
         val diff = """
             diff --git a/file.txt b/file.txt
@@ -217,6 +231,37 @@ class LlmServiceTest {
         assertContains(result, "diff --git a/src/One.kt b/src/One.kt")
         assertContains(result, "diff --git a/src/Two.kt b/src/Two.kt")
         assertTrue(!result.contains("diff --git a/src/Three.kt b/src/Three.kt"))
+    }
+
+    @Test
+    fun compactDiffToTokenBudget_compactsMoreAggressivelyForSmallerModelWindow() {
+        val diff = listOf(
+            patchSection("One", 220),
+            patchSection("Two", 220),
+            patchSection("Three", 220),
+        ).joinToString("\n")
+
+        val compact16k = PromptCompactor.compactDiffToTokenBudget(diff, maxTokens = 4_000)
+        val compact32k = PromptCompactor.compactDiffToTokenBudget(diff, maxTokens = 8_000)
+
+        assertTrue(compact16k.length < compact32k.length)
+        assertContains(compact16k, "[diff truncated to fit model context:")
+        assertTrue(compact32k.length <= diff.length)
+    }
+
+    @Test
+    fun allocateTextBudgets_prioritizesPrimaryInputWithinSharedBudget() {
+        val budgets = PromptCompactor.allocateTextBudgets(
+            totalTokens = 6_000,
+            labeledTexts = listOf(
+                "PR template" to "Template\n".repeat(2_000),
+                "commit log" to "Commit line\n".repeat(5_000),
+            ),
+            primaryLabel = "commit log",
+        )
+
+        assertTrue((budgets["commit log"] ?: 0) > (budgets["PR template"] ?: 0))
+        assertEquals(6_000, budgets.values.sum())
     }
 
     private fun patchSection(name: String, lineCount: Int): String {
