@@ -281,6 +281,76 @@ class LlmServiceHttpTest {
     }
 
     @Test
+    fun generateCommitMessage_stopsAfterConfiguredOverflowRetries() = runTest {
+        var completionCalls = 0
+        val client = mockClient(
+            modelsHandler = { request ->
+                when (request.url.encodedPath) {
+                    "/models" -> respondJson("""{"data":[{"id":"model","context_length":16384}]}""")
+                    else -> error("Unexpected request path: ${request.url.encodedPath}")
+                }
+            },
+        ) { request ->
+            when (request.url.encodedPath) {
+                "/chat/completions" -> {
+                    completionCalls += 1
+                    respond(
+                        content = ByteReadChannel("""{"error":"prompt exceeds context window"}"""),
+                        status = HttpStatusCode.BadRequest,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+                else -> error("Unexpected request path: ${request.url.encodedPath}")
+            }
+        }
+
+        val diff = buildString {
+            repeat(1_400) { fileIndex ->
+                append("diff --git a/src/File$fileIndex.kt b/src/File$fileIndex.kt\n")
+                append("@@ -1,1 +1,4 @@\n")
+                append("+line $fileIndex a with enough code content to consume prompt budget\n")
+                append("+line $fileIndex b with enough code content to consume prompt budget\n")
+                append("+line $fileIndex c with enough code content to consume prompt budget\n")
+                append("+line $fileIndex d with enough code content to consume prompt budget\n")
+            }
+        }
+
+        val service = LlmService(client)
+        val result = service.generateCommitMessage("http://localhost", "model", diff)
+
+        assertTrue(result.isFailure)
+        assertEquals(3, completionCalls)
+        val message = result.exceptionOrNull()?.message.orEmpty()
+        assertContains(message, "exceeded the available context window")
+        assertContains(message, "after 3 attempt(s)")
+    }
+
+    @Test
+    fun generateCommitMessage_doesNotRetryForNonOverflowApiErrors() = runTest {
+        var completionCalls = 0
+        val client = mockClient { request ->
+            when (request.url.encodedPath) {
+                "/chat/completions" -> {
+                    completionCalls += 1
+                    respond(
+                        content = ByteReadChannel("""{"error":"rate limit exceeded"}"""),
+                        status = HttpStatusCode.TooManyRequests,
+                        headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                    )
+                }
+                else -> error("Unexpected request path: ${request.url.encodedPath}")
+            }
+        }
+
+        val service = LlmService(client)
+        val result = service.generateCommitMessage("http://localhost", "model", "diff --git a/a b/a")
+
+        assertTrue(result.isFailure)
+        assertEquals(1, completionCalls)
+        assertContains(result.exceptionOrNull()?.message.orEmpty(), "LLM API error 429: Too Many Requests")
+    }
+
+    @Test
     fun generatePrDescription_includesTemplateAndCompactedCommitLog() = runTest {
         var requestBody = ""
         val client = mockClient(
