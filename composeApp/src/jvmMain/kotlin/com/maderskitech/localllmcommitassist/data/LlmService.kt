@@ -650,17 +650,21 @@ internal object PromptCompactor {
             }
         }
 
+        // Reserve space for the notice header so the total result stays within maxChars
+        val noticeReserve = estimateDiffNoticeLength(diff.length, sections.size)
+        val bodyBudget = (maxChars - noticeReserve).coerceAtLeast(256)
+
         val builder = StringBuilder()
         for (section in truncatedSections) {
             val separatorLength = if (builder.isEmpty()) 0 else 1
-            if (builder.length + separatorLength + section.length > maxChars) {
+            if (builder.length + separatorLength + section.length > bodyBudget) {
                 break
             }
             if (builder.isNotEmpty()) builder.append('\n')
             builder.append(section.trimEnd())
         }
 
-        val compacted = if (builder.isNotEmpty()) builder.toString() else truncateSection(diff, maxChars)
+        val compacted = if (builder.isNotEmpty()) builder.toString() else truncateSection(diff, bodyBudget)
         val includedSections = countIncludedSections(compacted)
         return buildString {
             append("[diff truncated to fit model context: ")
@@ -779,6 +783,9 @@ internal object PromptCompactor {
         val safeHead = (remaining - safeTail).coerceAtLeast(0)
         return text.take(safeHead) + marker + text.takeLast(safeTail)
     }
+
+    private fun estimateDiffNoticeLength(diffLength: Int, sectionCount: Int): Int =
+        "[diff truncated to fit model context: $diffLength chars across $sectionCount file patch(es); sending $diffLength chars across $sectionCount patch(es)]\n\n".length
 
     private fun countIncludedSections(text: String): Int =
         text.lineSequence().count { it.trimStart().startsWith("diff --git ") }.coerceAtLeast(1)

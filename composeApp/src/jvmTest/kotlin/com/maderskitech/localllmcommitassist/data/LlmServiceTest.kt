@@ -150,7 +150,7 @@ class LlmServiceTest {
             $fileTwoBody
         """.trimIndent()
 
-        val result = PromptCompactor.compactDiff(diff, maxChars = 1_100, maxCharsPerSection = 500)
+        val result = PromptCompactor.compactDiff(diff, maxChars = 1_200, maxCharsPerSection = 500)
 
         assertContains(result, "[diff truncated to fit model context:")
         assertContains(result, "diff --git a/src/One.kt b/src/One.kt")
@@ -225,8 +225,8 @@ class LlmServiceTest {
             patchSection("Three", 8),
         ).joinToString("\n")
 
-        // Per-section cap of 180 means each section is ~180 chars; total budget of 450 fits exactly 2
-        val result = PromptCompactor.compactDiff(diff, maxChars = 450, maxCharsPerSection = 180)
+        // Per-section cap of 180 means each section is ~180 chars; body budget of ~436 (550 minus notice reserve) fits exactly 2
+        val result = PromptCompactor.compactDiff(diff, maxChars = 550, maxCharsPerSection = 180)
 
         assertContains(result, "across 3 file patch(es);")
         assertContains(result, "across 2 patch(es)]")
