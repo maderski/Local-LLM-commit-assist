@@ -188,7 +188,7 @@ class LlmServiceTest {
     }
 
     @Test
-    fun compactDiff_fallsBackWhenNoSectionFitsBuilderBudget() {
+    fun compactDiff_capsOversizedHeaderSectionWithinPerSectionBudget() {
         val oversizedHeader = buildString {
             repeat(40) { index ->
                 append("rename metadata line $index that keeps the header very large\n")
@@ -208,7 +208,8 @@ class LlmServiceTest {
             +new
         """.trimIndent()
 
-        val result = PromptCompactor.compactDiff(diff, maxChars = 220, maxCharsPerSection = 120)
+        // maxChars large enough for both sections after per-section capping
+        val result = PromptCompactor.compactDiff(diff, maxChars = 500, maxCharsPerSection = 200)
 
         assertContains(result, "[diff truncated to fit model context:")
         assertContains(result, "diff --git a/src/Huge.kt b/src/HugeRenamed.kt")
@@ -224,7 +225,8 @@ class LlmServiceTest {
             patchSection("Three", 8),
         ).joinToString("\n")
 
-        val result = PromptCompactor.compactDiff(diff, maxChars = 800, maxCharsPerSection = 180)
+        // Per-section cap of 180 means each section is ~180 chars; total budget of 450 fits exactly 2
+        val result = PromptCompactor.compactDiff(diff, maxChars = 450, maxCharsPerSection = 180)
 
         assertContains(result, "across 3 file patch(es);")
         assertContains(result, "across 2 patch(es)]")

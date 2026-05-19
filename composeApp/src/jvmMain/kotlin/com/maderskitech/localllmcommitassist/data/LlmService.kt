@@ -407,19 +407,17 @@ class LlmService private constructor(
         model: String,
         modelContextWindowTokens: Int?,
     ): ModelContextWindow {
+        modelContextWindowTokens
+            ?.takeIf { it > 0 }
+            ?.let { return ModelContextWindow(it, ContextWindowSource.USER_OVERRIDE) }
+
         val cacheKey = "${address.trimEnd('/')}\n$model"
         providerContextCache[cacheKey]?.let { return it }
 
-        discoverProviderContextWindow(address, model)?.let { detected ->
-            providerContextCache[cacheKey] = detected
-            return detected
-        }
-
-        modelContextWindowTokens
-            ?.takeIf { it >= MIN_CONTEXT_WINDOW_TOKENS }
-            ?.let { return ModelContextWindow(it, ContextWindowSource.USER_OVERRIDE) }
-
-        return ModelContextWindow(DEFAULT_CONTEXT_WINDOW_TOKENS, ContextWindowSource.DEFAULT_FALLBACK)
+        val result = discoverProviderContextWindow(address, model)
+            ?: ModelContextWindow(DEFAULT_CONTEXT_WINDOW_TOKENS, ContextWindowSource.DEFAULT_FALLBACK)
+        providerContextCache[cacheKey] = result
+        return result
     }
 
     private suspend fun discoverProviderContextWindow(address: String, model: String): ModelContextWindow? {
@@ -435,7 +433,7 @@ class LlmService private constructor(
                 val body = response.bodyAsText()
                 val root = json.parseToJsonElement(body)
                 extractContextWindowTokens(root, model)
-                    ?.takeIf { it >= MIN_CONTEXT_WINDOW_TOKENS }
+                    ?.takeIf { it >= MIN_PROVIDER_CONTEXT_WINDOW_TOKENS }
                     ?.let { ModelContextWindow(it, ContextWindowSource.PROVIDER_METADATA) }
             }.getOrNull()?.let { return it }
         }
@@ -449,7 +447,6 @@ class LlmService private constructor(
             data?.firstOrNull { element ->
                 (element as? JsonObject)?.get("id")?.jsonPrimitive?.contentOrNull() == model
             }?.let { candidates += it }
-            data?.let { candidates.add(it) }
         }
         candidates += root
 
@@ -459,17 +456,12 @@ class LlmService private constructor(
     }
 
     private fun findContextWindowTokens(element: JsonElement): Int? = when (element) {
-        is JsonPrimitive -> element.content.toIntOrNull()?.takeIf { it >= MIN_CONTEXT_WINDOW_TOKENS }
+        is JsonPrimitive -> element.content.toIntOrNull()?.takeIf { it >= MIN_PROVIDER_CONTEXT_WINDOW_TOKENS }
         is JsonArray -> element.asSequence().mapNotNull { findContextWindowTokens(it) }.firstOrNull()
         is JsonObject -> {
             CONTEXT_WINDOW_KEYS.asSequence()
                 .mapNotNull { key -> element[key]?.let { findContextWindowTokens(it) } }
                 .firstOrNull()
-                ?: element.entries
-                    .sortedBy { (_, value) -> if (value is JsonObject || value is JsonArray) 0 else 1 }
-                    .asSequence()
-                    .mapNotNull { (_, value) -> findContextWindowTokens(value) }
-                    .firstOrNull()
         }
     }
 
@@ -497,8 +489,10 @@ class LlmService private constructor(
     }
 
     private fun isContextOverflowError(status: HttpStatusCode, body: String): Boolean {
+        if (status == HttpStatusCode.PayloadTooLarge) return true
         val normalized = body.lowercase()
-        return status == HttpStatusCode.BadRequest && CONTEXT_OVERFLOW_MARKERS.any { it in normalized }
+        return (status == HttpStatusCode.BadRequest || status == HttpStatusCode.UnprocessableEntity) &&
+            CONTEXT_OVERFLOW_MARKERS.any { it in normalized }
     }
 
     private fun buildDefaultDescription(diff: String, summary: String): String {
@@ -562,7 +556,7 @@ class LlmService private constructor(
         )
 
         private const val DEFAULT_CONTEXT_WINDOW_TOKENS = 8_192
-        private const val MIN_CONTEXT_WINDOW_TOKENS = 4_096
+        private const val MIN_PROVIDER_CONTEXT_WINDOW_TOKENS = 512
         private const val MIN_INPUT_BUDGET_TOKENS = 1_024
         private const val MIN_SAFETY_BUFFER_TOKENS = 768
         private const val PROMPT_OVERHEAD_TOKENS = 512
@@ -763,7 +757,10 @@ internal object PromptCompactor {
             .joinToString("\n")
             .trimEnd()
         val headerWithSpacing = if (header.isBlank()) "" else "$header\n"
-        val remaining = (maxChars - headerWithSpacing.length).coerceAtLeast(256)
+        if (headerWithSpacing.length >= maxChars) {
+            return truncateMiddle(section, maxChars)
+        }
+        val remaining = maxChars - headerWithSpacing.length
         val body = section.removePrefix(headerWithSpacing)
         return headerWithSpacing + truncateMiddle(body, remaining)
     }
