@@ -1,5 +1,6 @@
 package com.maderskitech.localllmcommitassist.data
 
+import java.security.MessageDigest
 import java.util.Base64
 import java.util.prefs.Preferences
 
@@ -192,9 +193,8 @@ class SettingsRepository {
 
     private fun modelContextKey(modelName: String): String {
         val normalizedName = modelName.ifBlank { DEFAULT_MODEL_CONTEXT_KEY }
-        val encoded = Base64.getUrlEncoder()
-            .withoutPadding()
-            .encodeToString(normalizedName.toByteArray())
+        val digest = MessageDigest.getInstance("SHA-256").digest(normalizedName.toByteArray())
+        val encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(digest)
         return KEY_MODEL_CONTEXT_WINDOW_PREFIX + encoded
     }
 }
