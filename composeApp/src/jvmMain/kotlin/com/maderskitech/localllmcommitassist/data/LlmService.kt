@@ -441,18 +441,18 @@ class LlmService private constructor(
     }
 
     private fun extractContextWindowTokens(root: JsonElement, model: String): Int? {
-        val candidates = mutableListOf<JsonElement>()
         if (root is JsonObject) {
             val data = root["data"] as? JsonArray
-            data?.firstOrNull { element ->
-                (element as? JsonObject)?.get("id")?.jsonPrimitive?.contentOrNull() == model
-            }?.let { candidates += it }
+            if (data != null) {
+                // List response: only use the matched model entry; never borrow from a sibling.
+                return data.firstOrNull { element ->
+                    (element as? JsonObject)?.get("id")?.jsonPrimitive?.contentOrNull() == model
+                }?.let { findContextWindowTokens(it) }
+            }
+            // Single model object (e.g. from /models/{model}).
+            return findContextWindowTokens(root)
         }
-        candidates += root
-
-        return candidates.asSequence()
-            .mapNotNull { findContextWindowTokens(it) }
-            .firstOrNull()
+        return null
     }
 
     private fun findContextWindowTokens(element: JsonElement): Int? = when (element) {
@@ -476,8 +476,8 @@ class LlmService private constructor(
         val safetyBufferTokens = maxOf(MIN_SAFETY_BUFFER_TOKENS, contextWindow.tokens / 10)
         val baseInputBudget = (
             contextWindow.tokens - outputReserveTokens - PROMPT_OVERHEAD_TOKENS - safetyBufferTokens
-            ).coerceAtLeast(MIN_INPUT_BUDGET_TOKENS)
-        val usableInputTokens = (baseInputBudget * attemptRatio).toInt().coerceAtLeast(MIN_INPUT_BUDGET_TOKENS)
+            ).coerceAtLeast(1)
+        val usableInputTokens = (baseInputBudget * attemptRatio).toInt().coerceAtLeast(1)
         return ModelPromptBudget(
             contextWindowTokens = contextWindow.tokens,
             usableInputTokens = usableInputTokens,
@@ -557,7 +557,6 @@ class LlmService private constructor(
 
         private const val DEFAULT_CONTEXT_WINDOW_TOKENS = 8_192
         private const val MIN_PROVIDER_CONTEXT_WINDOW_TOKENS = 512
-        private const val MIN_INPUT_BUDGET_TOKENS = 1_024
         private const val MIN_SAFETY_BUFFER_TOKENS = 768
         private const val PROMPT_OVERHEAD_TOKENS = 512
         private const val COMMIT_OUTPUT_RESERVE_TOKENS = 700
