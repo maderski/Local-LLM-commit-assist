@@ -423,7 +423,7 @@ class LlmService private constructor(
     private suspend fun discoverProviderContextWindow(address: String, model: String): ModelContextWindow? {
         val candidates = buildList {
             add("${address.trimEnd('/')}/models")
-            add("${address.trimEnd('/')}/models/${model.encodeURLPath()}")
+            add("${address.trimEnd('/')}/models/${model.encodeURLPath().replace("/", "%2F")}")
         }
 
         for (endpoint in candidates) {
@@ -446,7 +446,7 @@ class LlmService private constructor(
             if (data != null) {
                 // List response: only use the matched model entry; never borrow from a sibling.
                 return data.firstOrNull { element ->
-                    (element as? JsonObject)?.get("id")?.jsonPrimitive?.contentOrNull() == model
+                    ((element as? JsonObject)?.get("id") as? JsonPrimitive)?.content == model
                 }?.let { findContextWindowTokens(it) }
             }
             // Single model object (e.g. from /models/{model}).
@@ -464,8 +464,6 @@ class LlmService private constructor(
                 .firstOrNull()
         }
     }
-
-    private fun JsonPrimitive.contentOrNull(): String? = runCatching { content }.getOrNull()
 
     private fun createPromptBudget(
         contextWindow: ModelContextWindow,
@@ -562,6 +560,8 @@ class LlmService private constructor(
         private const val COMMIT_OUTPUT_RESERVE_TOKENS = 700
         private const val PR_OUTPUT_RESERVE_TOKENS = 1_200
         private const val FALLBACK_OUTPUT_RESERVE_TOKENS = 700
+        // Ratios shrink usable input on each retry: full budget, ~28% reduction, then half.
+        // The 0.72 step covers per-token overhead rounding without cutting too aggressively.
         private val INPUT_BUDGET_ATTEMPT_RATIOS = listOf(1.0, 0.72, 0.5)
         private val CONTEXT_WINDOW_KEYS = listOf(
             "context_length",
@@ -690,6 +690,7 @@ internal object PromptCompactor {
         labeledTexts: List<Pair<String, String>>,
         primaryLabel: String,
     ): Map<String, Int> {
+        require(labeledTexts.size <= 2) { "allocateTextBudgets supports at most 2 inputs, got ${labeledTexts.size}" }
         if (labeledTexts.isEmpty()) return emptyMap()
         if (labeledTexts.size == 1) return mapOf(labeledTexts.single().first to totalTokens)
 
@@ -719,7 +720,7 @@ internal object PromptCompactor {
             if (secondaryBudget - overflow >= secondaryFloor) {
                 secondaryBudget -= overflow
             } else {
-                primaryBudget -= overflow - (secondaryBudget - secondaryFloor)
+                primaryBudget = (primaryBudget - (overflow - (secondaryBudget - secondaryFloor))).coerceAtLeast(1)
                 secondaryBudget = secondaryFloor
             }
         }

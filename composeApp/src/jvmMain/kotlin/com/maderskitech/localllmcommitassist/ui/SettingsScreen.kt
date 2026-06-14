@@ -172,7 +172,7 @@ fun SettingsScreen(
                                     modelContextWindow.toIntOrNull(),
                                 )
                                     .onSuccess { reply ->
-                                        testResult = "Connection successful! LLM replied: \"$reply\""
+                                        testResult = "Connection successful! $reply"
                                         testIsError = false
                                     }
                                     .onFailure { e ->

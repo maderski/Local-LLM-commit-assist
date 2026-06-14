@@ -398,10 +398,10 @@ class LlmServiceHttpTest {
     }
 
     @Test
-    fun generateCommitMessage_returnsDetailedApiError_whenBodyPresent() = runTest {
+    fun generateCommitMessage_returnsDetailedApiError_forNonOverflowBadRequest() = runTest {
         val client = mockClient { _ ->
             respond(
-                content = ByteReadChannel("""{"error":"request exceeds context limit"}"""),
+                content = ByteReadChannel("""{"error":"model not found"}"""),
                 status = HttpStatusCode.BadRequest,
                 headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
             )
@@ -413,7 +413,7 @@ class LlmServiceHttpTest {
         assertTrue(result.isFailure)
         val message = result.exceptionOrNull()?.message.orEmpty()
         assertContains(message, "LLM API error 400: Bad Request")
-        assertContains(message, "request exceeds context limit")
+        assertContains(message, "model not found")
     }
 
     @Test
@@ -449,8 +449,13 @@ class LlmServiceHttpTest {
 
     @Test
     fun generateCommitMessage_fallsBackFromMalformedJsonText() = runTest {
+        var callCount = 0
         val client = mockClient { _ ->
-            respondJson("""{"choices":[{"message":{"role":"assistant","content":"{\"summary\":\"Bad json\""}}]}""")
+            callCount++
+            when (callCount) {
+                1 -> respondJson("""{"choices":[{"message":{"role":"assistant","content":"{\"summary\":\"Bad json\""}}]}""")
+                else -> respondJson("""{"choices":[{"message":{"role":"assistant","content":"- Fix malformed JSON fallback"}}]}""")
+            }
         }
 
         val service = LlmService(client)
@@ -458,7 +463,7 @@ class LlmServiceHttpTest {
 
         assertTrue(result.isSuccess)
         assertContains(result.getOrThrow().summary, "{\"summary\":\"Bad json\"")
-        assertTrue(result.getOrThrow().description.isNotBlank())
+        assertContains(result.getOrThrow().description, "Fix malformed JSON fallback")
     }
 
     @Test
