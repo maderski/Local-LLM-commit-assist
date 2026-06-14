@@ -1,5 +1,7 @@
 package com.maderskitech.localllmcommitassist.data
 
+import java.security.MessageDigest
+import java.util.Base64
 import java.util.prefs.Preferences
 
 class SettingsRepository {
@@ -41,6 +43,20 @@ class SettingsRepository {
 
     fun setModelName(name: String) {
         prefs.put(KEY_MODEL_NAME, name)
+    }
+
+    fun getModelContextWindow(modelName: String = getModelName()): Int? =
+        prefs.get(modelContextKey(modelName), "")
+            .toIntOrNull()
+            ?.takeIf { it > 0 }
+
+    fun setModelContextWindow(modelName: String, contextWindowTokens: Int?) {
+        val key = modelContextKey(modelName)
+        if (contextWindowTokens == null || contextWindowTokens <= 0) {
+            prefs.remove(key)
+        } else {
+            prefs.put(key, contextWindowTokens.toString())
+        }
     }
 
     fun getSavedProjects(): List<String> {
@@ -152,6 +168,7 @@ class SettingsRepository {
     companion object {
         private const val KEY_LLM_ADDRESS = "llm_address"
         private const val KEY_MODEL_NAME = "model_name"
+        private const val KEY_MODEL_CONTEXT_WINDOW_PREFIX = "model_context_window."
         private const val KEY_PROJECTS = "saved_projects"
         private const val KEY_SELECTED_PROJECT = "selected_project"
         private const val KEY_PR_PLATFORM = "pr_platform"
@@ -171,6 +188,14 @@ class SettingsRepository {
         private const val DEFAULT_PR_TARGET_BRANCH = "main"
         private const val SEPARATOR = "\n"
         private const val REVIEWER_FIELD_SEPARATOR = "|"
+        private const val DEFAULT_MODEL_CONTEXT_KEY = "__default__"
+    }
+
+    private fun modelContextKey(modelName: String): String {
+        val normalizedName = modelName.ifBlank { DEFAULT_MODEL_CONTEXT_KEY }
+        val digest = MessageDigest.getInstance("SHA-256").digest(normalizedName.toByteArray())
+        val encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(digest)
+        return KEY_MODEL_CONTEXT_WINDOW_PREFIX + encoded
     }
 }
 
