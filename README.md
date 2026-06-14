@@ -2,7 +2,7 @@
 
 A macOS desktop app that uses an OpenAI-compatible local LLM to turn Git changes into commit messages and pull request descriptions. Review the generated text, manage branches, commit and push changes, and create GitHub or Azure DevOps pull requests without leaving the app.
 
-<img width="900" height="996" alt="image" src="https://github.com/user-attachments/assets/a79a6eee-b970-4d11-b36e-13666ec98015" />
+<img width="400" height="443" alt="image" src="https://github.com/user-attachments/assets/a79a6eee-b970-4d11-b36e-13666ec98015" />
 
 
 ## Features
